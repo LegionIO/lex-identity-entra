@@ -1,2 +1,20 @@
 inherit_gem:
   rubocop-legion: config/lex.yml
+  
+Style/ModuleFunction:
+  Exclude:
+    - 'lib/legion/extensions/identity/entra/helpers/token_manager.rb'
+    - 'lib/legion/extensions/identity/entra/helpers/graph_client.rb'
+    - 'lib/legion/extensions/identity/entra/helpers/account_discovery.rb'
+
+Legion/Extension/EveryActorRequiresTime:
+  Enabled: false
+
+ThreadSafety/ClassInstanceVariable:
+  Exclude:
+    - 'lib/legion/extensions/identity/helpers/'
+    - 'lib/legion/extensions/identity/entra/helpers/'
+    - 'lib/legion/extensions/identity/entra/helpers/'
+    - 'lib/legion/extensions/identity/entra/client.rb'
+    - 'lib/legion/extensions/identity/entra/helpers/scope_gate.rb'
+

@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require 'spec_helper'
+require 'faraday'
 
 RSpec.describe Legion::Extensions::Identity::Entra::Helpers::GraphClient do
   subject(:client) { described_class }
@@ -10,29 +11,28 @@ RSpec.describe Legion::Extensions::Identity::Entra::Helpers::GraphClient do
     let(:graph_response_body) do
       {
         'id'                       => 'abc-123-def',
-        'displayName'              => 'Matt Iverson',
-        'mail'                     => 'matt.iverson@optum.com',
+        'displayName'              => 'Jane Doe',
+        'mail'                     => 'jdoe@example.com',
         'employeeId'               => 'E99999',
-        'onPremisesSamAccountName' => 'miverso2',
+        'onPremisesSamAccountName' => 'jdoe',
         'onPremisesDomainName'     => 'MS',
-        'mailNickname'             => 'matt.iverson',
+        'mailNickname'             => 'jdoe',
         'department'               => 'Engineering',
         'jobTitle'                 => 'Senior Engineer',
-        'companyName'              => 'Optum'
+        'companyName'              => 'ExampleCorp'
       }.to_json
     end
 
     context 'when the Graph API returns 200' do
       before do
-        http_double = instance_double(Net::HTTP)
-        allow(Net::HTTP).to receive(:new).and_return(http_double)
-        allow(http_double).to receive(:use_ssl=)
-        allow(http_double).to receive(:open_timeout=)
-        allow(http_double).to receive(:read_timeout=)
+        faraday_double = instance_double(Faraday::Connection)
+        allow(described_class).to receive(:graph_connection).and_return(faraday_double)
 
-        response = instance_double(Net::HTTPOK, body: graph_response_body)
-        allow(response).to receive(:is_a?).with(Net::HTTPSuccess).and_return(true)
-        allow(http_double).to receive(:request).and_return(response)
+        response = instance_double(Faraday::Response,
+                                   success?: true,
+                                   status:   200,
+                                   body:     graph_response_body)
+        allow(faraday_double).to receive(:get).and_return(response)
       end
 
       it 'returns a hash with symbolized keys' do
@@ -45,11 +45,11 @@ RSpec.describe Legion::Extensions::Identity::Entra::Helpers::GraphClient do
       end
 
       it 'maps displayName to display_name' do
-        expect(client.fetch_me(access_token)[:display_name]).to eq('Matt Iverson')
+        expect(client.fetch_me(access_token)[:display_name]).to eq('Jane Doe')
       end
 
       it 'maps mail correctly' do
-        expect(client.fetch_me(access_token)[:mail]).to eq('matt.iverson@optum.com')
+        expect(client.fetch_me(access_token)[:mail]).to eq('jdoe@example.com')
       end
 
       it 'maps employeeId to employee_id' do
@@ -57,7 +57,7 @@ RSpec.describe Legion::Extensions::Identity::Entra::Helpers::GraphClient do
       end
 
       it 'maps onPremisesSamAccountName to on_premises_sam_account_name' do
-        expect(client.fetch_me(access_token)[:on_premises_sam_account_name]).to eq('miverso2')
+        expect(client.fetch_me(access_token)[:on_premises_sam_account_name]).to eq('jdoe')
       end
 
       it 'maps onPremisesDomainName to on_premises_domain_name' do
@@ -65,7 +65,7 @@ RSpec.describe Legion::Extensions::Identity::Entra::Helpers::GraphClient do
       end
 
       it 'maps mailNickname to mail_nickname' do
-        expect(client.fetch_me(access_token)[:mail_nickname]).to eq('matt.iverson')
+        expect(client.fetch_me(access_token)[:mail_nickname]).to eq('jdoe')
       end
 
       it 'maps department correctly' do
@@ -77,21 +77,20 @@ RSpec.describe Legion::Extensions::Identity::Entra::Helpers::GraphClient do
       end
 
       it 'maps companyName to company_name' do
-        expect(client.fetch_me(access_token)[:company_name]).to eq('Optum')
+        expect(client.fetch_me(access_token)[:company_name]).to eq('ExampleCorp')
       end
     end
 
     context 'when the Graph API returns 401' do
       before do
-        http_double = instance_double(Net::HTTP)
-        allow(Net::HTTP).to receive(:new).and_return(http_double)
-        allow(http_double).to receive(:use_ssl=)
-        allow(http_double).to receive(:open_timeout=)
-        allow(http_double).to receive(:read_timeout=)
+        faraday_double = instance_double(Faraday::Connection)
+        allow(described_class).to receive(:graph_connection).and_return(faraday_double)
 
-        response = instance_double(Net::HTTPUnauthorized, body: '{"error":"unauthorized"}')
-        allow(response).to receive(:is_a?).with(Net::HTTPSuccess).and_return(false)
-        allow(http_double).to receive(:request).and_return(response)
+        response = instance_double(Faraday::Response,
+                                   success?: false,
+                                   status:   401,
+                                   body:     '{"error":"unauthorized"}')
+        allow(faraday_double).to receive(:get).and_return(response)
       end
 
       it 'returns nil' do
@@ -101,7 +100,9 @@ RSpec.describe Legion::Extensions::Identity::Entra::Helpers::GraphClient do
 
     context 'when a network error occurs' do
       before do
-        allow(Net::HTTP).to receive(:new).and_raise(Errno::ECONNREFUSED)
+        faraday_double = instance_double(Faraday::Connection)
+        allow(described_class).to receive(:graph_connection).and_return(faraday_double)
+        allow(faraday_double).to receive(:get).and_raise(Errno::ECONNREFUSED)
       end
 
       it 'returns nil' do

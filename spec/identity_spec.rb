@@ -37,7 +37,7 @@ rescue LoadError
   end
 end
 
-RSpec.describe Legion::Extensions::Identity::Entra::Identity do
+RSpec.describe Legion::Extensions::Identity::Entra::Delegated::Identity do
   subject(:identity) { described_class }
 
   let(:graph_client) { Legion::Extensions::Identity::Entra::Helpers::GraphClient }
@@ -46,8 +46,8 @@ RSpec.describe Legion::Extensions::Identity::Entra::Identity do
   # ---- Provider contract interface ----
 
   describe '.provider_name' do
-    it 'returns :entra' do
-      expect(identity.provider_name).to eq(:entra)
+    it 'returns :entra_delegated' do
+      expect(identity.provider_name).to eq(:entra_delegated)
     end
   end
 
@@ -85,15 +85,15 @@ RSpec.describe Legion::Extensions::Identity::Entra::Identity do
 
   describe '.normalize' do
     it 'strips @domain and downcases' do
-      expect(identity.normalize('miverso2@optum.com')).to eq('miverso2')
+      expect(identity.normalize('jdoe@example.com')).to eq('jdoe')
     end
 
     it 'downcases a name without domain' do
-      expect(identity.normalize('MIVERSO2')).to eq('miverso2')
+      expect(identity.normalize('JDOE')).to eq('jdoe')
     end
 
     it 'strips leading and trailing whitespace' do
-      expect(identity.normalize('  miverso2  ')).to eq('miverso2')
+      expect(identity.normalize('  jdoe  ')).to eq('jdoe')
     end
 
     it 'removes special characters (dots)' do
@@ -155,15 +155,15 @@ RSpec.describe Legion::Extensions::Identity::Entra::Identity do
       let(:profile) do
         {
           id:                           'abc-123',
-          display_name:                 'Matt Iverson',
-          mail:                         'matt.iverson@optum.com',
+          display_name:                 'Jane Doe',
+          mail:                         'jdoe@example.com',
           employee_id:                  'E12345',
-          on_premises_sam_account_name: 'miverso2',
+          on_premises_sam_account_name: 'jdoe',
           on_premises_domain_name:      'MS',
-          mail_nickname:                'matt.iverson',
+          mail_nickname:                'jdoe',
           department:                   'Engineering',
           job_title:                    'Engineer',
-          company_name:                 'Optum'
+          company_name:                 'ExampleCorp'
         }
       end
 
@@ -177,15 +177,15 @@ RSpec.describe Legion::Extensions::Identity::Entra::Identity do
       end
 
       it 'sets canonical_name to the normalized sAMAccountName' do
-        expect(identity.resolve[:canonical_name]).to eq('miverso2')
+        expect(identity.resolve[:canonical_name]).to eq('jdoe')
       end
 
       it 'sets kind to :human' do
         expect(identity.resolve[:kind]).to eq(:human)
       end
 
-      it 'sets source to :entra' do
-        expect(identity.resolve[:source]).to eq(:entra)
+      it 'sets source to :entra_delegated' do
+        expect(identity.resolve[:source]).to eq(:entra_delegated)
       end
 
       it 'sets provider_identity to the Entra object ID' do
@@ -231,8 +231,24 @@ RSpec.describe Legion::Extensions::Identity::Entra::Identity do
   # ---- resolve_all ----
 
   describe '.resolve_all' do
+    let(:account_discovery) { Legion::Extensions::Identity::Entra::Helpers::AccountDiscovery }
+
+    context 'when account discovery returns resolved accounts' do
+      before do
+        allow(account_discovery).to receive(:resolve_all_accounts).and_return([
+                                                                                { canonical_name: 'jdoe',
+                                                                                  source:         :entra }
+                                                                              ])
+      end
+
+      it 'returns all discovered Entra accounts' do
+        expect(identity.resolve_all).to eq([{ canonical_name: 'jdoe', source: :entra }])
+      end
+    end
+
     context 'when resolve returns nil' do
       before do
+        allow(account_discovery).to receive(:resolve_all_accounts).and_return([])
         allow(token_manager).to receive(:load_token).with(:delegated).and_return(nil)
       end
 
@@ -243,6 +259,7 @@ RSpec.describe Legion::Extensions::Identity::Entra::Identity do
 
     context 'when resolve returns a result' do
       before do
+        allow(account_discovery).to receive(:resolve_all_accounts).and_return([])
         allow(token_manager).to receive(:load_token).with(:delegated).and_return('token')
         allow(graph_client).to receive(:fetch_me).with('token').and_return(
           id: 'abc', on_premises_sam_account_name: 'user1', mail_nickname: 'user1',
@@ -273,6 +290,14 @@ RSpec.describe Legion::Extensions::Identity::Entra::Identity do
     context 'when a cached token exists' do
       before do
         allow(token_manager).to receive(:load_token).with(:delegated).and_return('my-access-token')
+        allow(token_manager).to receive(:token_data).with(:delegated, refresh: false).and_return(
+          {
+            access_token:  'my-access-token',
+            refresh_token: 'my-refresh-token',
+            expires_at:    Time.now + 3600,
+            scopes:        'openid profile User.Read offline_access'
+          }
+        )
       end
 
       it 'returns a Legion::Identity::Lease' do
@@ -280,8 +305,8 @@ RSpec.describe Legion::Extensions::Identity::Entra::Identity do
         expect(result).to be_a(Legion::Identity::Lease)
       end
 
-      it 'sets provider to :entra' do
-        expect(identity.provide_token.provider).to eq(:entra)
+      it 'sets provider to :entra_delegated' do
+        expect(identity.provide_token.provider).to eq(:entra_delegated)
       end
 
       it 'sets credential to the token string' do

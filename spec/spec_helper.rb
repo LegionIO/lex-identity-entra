@@ -6,17 +6,43 @@ SimpleCov.start do
 end
 
 require 'bundler/setup'
-require 'legion/logging'
-require 'legion/settings'
+require 'legion/crypt'
+require 'legion/json'
 require 'legion/json/helper'
+require 'legion/logging'
+require 'legion/logging/helper'
+require 'legion/settings'
+require 'legion/settings/helper'
 
+# Stub Legion::Extensions::Actors and Legion::Extensions::Hooks before loading
+# extension files that inherit from them — these base classes live in the
+# LegionIO monorepo core gems which are not available in this isolated test env.
 module Legion
   module Extensions
+    module Actors
+      class Base
+        def run; end
+      end
+
+      class Once < Base; end
+      class Every < Base; end
+    end
+
+    module Hooks
+      class Base
+        def self.mount(_path); end
+      end
+    end
+
     module Helpers
       module Lex
         include Legion::Logging::Helper if defined?(Legion::Logging::Helper)
         include Legion::Settings::Helper if defined?(Legion::Settings::Helper)
         include Legion::JSON::Helper if defined?(Legion::JSON::Helper)
+
+        def self.included(base)
+          base.extend base if base.instance_of?(Module)
+        end
       end
     end
   end
