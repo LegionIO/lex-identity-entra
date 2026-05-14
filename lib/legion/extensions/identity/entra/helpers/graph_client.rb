@@ -1,8 +1,6 @@
 # frozen_string_literal: true
 
-require 'net/http'
-require 'json'
-require 'uri'
+require 'faraday'
 
 module Legion
   module Extensions
@@ -10,44 +8,52 @@ module Legion
       module Entra
         module Helpers
           module GraphClient
-            GRAPH_BASE = 'https://graph.microsoft.com/v1.0'
-            ME_SELECT  = 'id,displayName,mail,employeeId,onPremisesSamAccountName,' \
-                         'onPremisesDomainName,mailNickname,department,jobTitle,companyName'
+            extend self
+            include Legion::Logging::Helper
+            include Legion::Settings::Helper
+            include Legion::JSON::Helper
 
-            module_function
+            ME_SELECT = 'id,displayName,mail,employeeId,onPremisesSamAccountName,' \
+                        'onPremisesDomainName,mailNickname,department,jobTitle,companyName'
 
             def fetch_me(access_token)
-              uri  = URI("#{GRAPH_BASE}/me?$select=#{ME_SELECT}")
-              http = Net::HTTP.new(uri.host, uri.port)
-              http.use_ssl      = true
-              http.open_timeout = 5
-              http.read_timeout = 10
+              log.debug('GraphClient.fetch_me: requesting /me profile from Microsoft Graph')
+              response = graph_connection(access_token).get("me?$select=#{ME_SELECT}")
 
-              request = Net::HTTP::Get.new(uri)
-              request['Authorization'] = "Bearer #{access_token}"
-              request['Accept']        = 'application/json'
+              unless response.success?
+                log.warn("GraphClient.fetch_me: Graph API returned #{response.status}")
+                return nil
+              end
 
-              response = http.request(request)
-              return nil unless response.is_a?(Net::HTTPSuccess)
-
-              parse_profile(::JSON.parse(response.body))
-            rescue StandardError => _e
+              log.debug('GraphClient.fetch_me: profile fetched successfully')
+              parse_profile(json_load(response.body))
+            rescue StandardError => e
+              handle_exception(e, level: :warn, operation: 'graph_client.fetch_me')
               nil
             end
 
             def parse_profile(data)
               {
-                id:                           data['id'],
-                display_name:                 data['displayName'],
-                mail:                         data['mail'],
-                employee_id:                  data['employeeId'],
-                on_premises_sam_account_name: data['onPremisesSamAccountName'],
-                on_premises_domain_name:      data['onPremisesDomainName'],
-                mail_nickname:                data['mailNickname'],
-                department:                   data['department'],
-                job_title:                    data['jobTitle'],
-                company_name:                 data['companyName']
+                id:                           data[:id],
+                display_name:                 data[:displayName] || data[:display_name],
+                mail:                         data[:mail],
+                employee_id:                  data[:employeeId] || data[:employee_id],
+                on_premises_sam_account_name: data[:onPremisesSamAccountName] || data[:on_premises_sam_account_name],
+                on_premises_domain_name:      data[:onPremisesDomainName] || data[:on_premises_domain_name],
+                mail_nickname:                data[:mailNickname] || data[:mail_nickname],
+                department:                   data[:department],
+                job_title:                    data[:jobTitle] || data[:job_title],
+                company_name:                 data[:companyName] || data[:company_name]
               }
+            end
+
+            def graph_connection(access_token)
+              Faraday.new(url: Legion::Extensions::Identity::Entra::Client::GRAPH_BASE) do |f|
+                f.headers['Authorization'] = "Bearer #{access_token}"
+                f.headers['Accept'] = 'application/json'
+                f.options.open_timeout = 5
+                f.options.timeout = 10
+              end
             end
           end
         end

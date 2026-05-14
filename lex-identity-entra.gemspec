@@ -28,6 +28,8 @@ Gem::Specification.new do |spec|
   spec.require_paths = ['lib']
 
   # Core framework dependencies
+  spec.add_dependency 'concurrent-ruby', '>= 1.2'
+  spec.add_dependency 'faraday',         '>= 2.0'
   spec.add_dependency 'legion-json',     '>= 1.2.1'
   spec.add_dependency 'legion-settings', '>= 1.3.14'
 
