@@ -101,7 +101,7 @@ identity:
 
 ```ruby
 {
-  canonical_name:    "miverso2",       # normalized from onPremisesSamAccountName or mailNickname
+  canonical_name:    "jdoe",       # normalized from onPremisesSamAccountName or mailNickname
   kind:              :human,
   source:            :entra_delegated,
   provider_identity: "object-id-guid",

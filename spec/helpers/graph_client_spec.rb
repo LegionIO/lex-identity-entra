@@ -11,15 +11,15 @@ RSpec.describe Legion::Extensions::Identity::Entra::Helpers::GraphClient do
     let(:graph_response_body) do
       {
         'id'                       => 'abc-123-def',
-        'displayName'              => 'Matt Iverson',
-        'mail'                     => 'matt.iverson@optum.com',
+        'displayName'              => 'Jane Doe',
+        'mail'                     => 'jdoe@example.com',
         'employeeId'               => 'E99999',
-        'onPremisesSamAccountName' => 'miverso2',
+        'onPremisesSamAccountName' => 'jdoe',
         'onPremisesDomainName'     => 'MS',
-        'mailNickname'             => 'matt.iverson',
+        'mailNickname'             => 'jdoe',
         'department'               => 'Engineering',
         'jobTitle'                 => 'Senior Engineer',
-        'companyName'              => 'Optum'
+        'companyName'              => 'ExampleCorp'
       }.to_json
     end
 
@@ -45,11 +45,11 @@ RSpec.describe Legion::Extensions::Identity::Entra::Helpers::GraphClient do
       end
 
       it 'maps displayName to display_name' do
-        expect(client.fetch_me(access_token)[:display_name]).to eq('Matt Iverson')
+        expect(client.fetch_me(access_token)[:display_name]).to eq('Jane Doe')
       end
 
       it 'maps mail correctly' do
-        expect(client.fetch_me(access_token)[:mail]).to eq('matt.iverson@optum.com')
+        expect(client.fetch_me(access_token)[:mail]).to eq('jdoe@example.com')
       end
 
       it 'maps employeeId to employee_id' do
@@ -57,7 +57,7 @@ RSpec.describe Legion::Extensions::Identity::Entra::Helpers::GraphClient do
       end
 
       it 'maps onPremisesSamAccountName to on_premises_sam_account_name' do
-        expect(client.fetch_me(access_token)[:on_premises_sam_account_name]).to eq('miverso2')
+        expect(client.fetch_me(access_token)[:on_premises_sam_account_name]).to eq('jdoe')
       end
 
       it 'maps onPremisesDomainName to on_premises_domain_name' do
@@ -65,7 +65,7 @@ RSpec.describe Legion::Extensions::Identity::Entra::Helpers::GraphClient do
       end
 
       it 'maps mailNickname to mail_nickname' do
-        expect(client.fetch_me(access_token)[:mail_nickname]).to eq('matt.iverson')
+        expect(client.fetch_me(access_token)[:mail_nickname]).to eq('jdoe')
       end
 
       it 'maps department correctly' do
@@ -77,7 +77,7 @@ RSpec.describe Legion::Extensions::Identity::Entra::Helpers::GraphClient do
       end
 
       it 'maps companyName to company_name' do
-        expect(client.fetch_me(access_token)[:company_name]).to eq('Optum')
+        expect(client.fetch_me(access_token)[:company_name]).to eq('ExampleCorp')
       end
     end
 

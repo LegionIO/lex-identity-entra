@@ -12,7 +12,7 @@
 - `AuthValidator` calls `Legion::Identity::Resolver.upgrade!` after auth to promote the Entra-verified identity into `Legion::Identity::Process` state.
 - MD5 scope fingerprint stored with token across all backends; mismatch or missing fingerprint forces re-authentication.
 - In-memory token store as tertiary fallback (vault → disk → memory).
-- Delegated scopes expanded to full UHG-granted permission set: Teams, Chat, Channel, OnlineMeetings, OneNote, SharePoint, Yammer, Files, Presence, and core OpenID/profile scopes.
+- Delegated scopes expanded to full org-granted permission set: Teams, Chat, Channel, OnlineMeetings, OneNote, SharePoint, Yammer, Files, Presence, and core OpenID/profile scopes.
 - OAuth callback page auto-closes after 10-second JavaScript countdown.
 
 ### Changed

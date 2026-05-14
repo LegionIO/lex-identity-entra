@@ -30,9 +30,8 @@ Gem::Specification.new do |spec|
   # Core framework dependencies
   spec.add_dependency 'concurrent-ruby', '>= 1.2'
   spec.add_dependency 'faraday',         '>= 2.0'
+  spec.add_dependency 'legion-crypt',    '>= 1.5.13'
   spec.add_dependency 'legion-json',     '>= 1.2.1'
+  spec.add_dependency 'legion-logging',  '>= 1.5.3'
   spec.add_dependency 'legion-settings', '>= 1.3.14'
-
-  # Optional runtime dependencies are guarded with defined?() in the source:
-  #   legion-crypt — for Vault token persistence (Legion::Crypt.vault_read / vault_write)
 end

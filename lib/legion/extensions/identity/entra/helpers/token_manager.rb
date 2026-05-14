@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+require 'concurrent'
 require 'digest'
 require 'fileutils'
 require 'time'
@@ -17,11 +18,10 @@ module Legion
 
             TOKEN_DIR = File.join(Dir.home, '.legionio', 'tokens')
             REFRESH_BUFFER = 60
+            MEMORY_STORE = Concurrent::Hash.new
 
-            @memory_store = {}.freeze
-
-            def self.memory_store
-              @memory_store
+            def memory_store
+              MEMORY_STORE
             end
 
             def load_token(qualifier = :delegated)

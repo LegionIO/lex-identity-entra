@@ -11,11 +11,11 @@ RSpec.describe Legion::Extensions::Identity::Entra::Helpers::TokenManager do
   before do
     stub_const('Legion::Extensions::Identity::Entra::Helpers::TokenManager::TOKEN_DIR', tmpdir)
     # Ensure vault is unavailable by default so tests don't attempt real vault calls
-    hide_const('Legion::Crypt') if defined?(Legion::Crypt)
+    allow(Legion::Crypt).to receive(:vault_connected?).and_return(false)
     # Stub scope fingerprint so tokens without a stored fingerprint aren't treated as stale
     allow(described_class).to receive(:current_scope_fingerprint).and_return('test-fingerprint')
-    # Reset in-memory store so it is mutable between examples
-    described_class.instance_variable_set(:@memory_store, {})
+    # Reset in-memory store between examples
+    described_class.memory_store.clear
   end
 
   after do
@@ -186,9 +186,9 @@ RSpec.describe Legion::Extensions::Identity::Entra::Helpers::TokenManager do
   # ---- vault_available? ----
 
   describe '.vault_available?' do
-    context 'when Legion::Crypt is not defined' do
-      it 'returns falsey' do
-        expect(manager.vault_available?).to be_falsey
+    context 'when vault_connected? returns false (default)' do
+      it 'returns false' do
+        expect(manager.vault_available?).to be false
       end
     end
 

@@ -6,12 +6,13 @@ SimpleCov.start do
 end
 
 require 'bundler/setup'
+require 'legion/crypt'
+require 'legion/json'
+require 'legion/json/helper'
 require 'legion/logging'
 require 'legion/logging/helper'
 require 'legion/settings'
 require 'legion/settings/helper'
-require 'legion/json'
-require 'legion/json/helper'
 
 # Stub Legion::Extensions::Actors and Legion::Extensions::Hooks before loading
 # extension files that inherit from them — these base classes live in the
@@ -19,7 +20,10 @@ require 'legion/json/helper'
 module Legion
   module Extensions
     module Actors
-      class Base; end
+      class Base
+        def run; end
+      end
+
       class Once < Base; end
       class Every < Base; end
     end

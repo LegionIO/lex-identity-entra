@@ -85,15 +85,15 @@ RSpec.describe Legion::Extensions::Identity::Entra::Delegated::Identity do
 
   describe '.normalize' do
     it 'strips @domain and downcases' do
-      expect(identity.normalize('miverso2@optum.com')).to eq('miverso2')
+      expect(identity.normalize('jdoe@example.com')).to eq('jdoe')
     end
 
     it 'downcases a name without domain' do
-      expect(identity.normalize('MIVERSO2')).to eq('miverso2')
+      expect(identity.normalize('JDOE')).to eq('jdoe')
     end
 
     it 'strips leading and trailing whitespace' do
-      expect(identity.normalize('  miverso2  ')).to eq('miverso2')
+      expect(identity.normalize('  jdoe  ')).to eq('jdoe')
     end
 
     it 'removes special characters (dots)' do
@@ -155,15 +155,15 @@ RSpec.describe Legion::Extensions::Identity::Entra::Delegated::Identity do
       let(:profile) do
         {
           id:                           'abc-123',
-          display_name:                 'Matt Iverson',
-          mail:                         'matt.iverson@optum.com',
+          display_name:                 'Jane Doe',
+          mail:                         'jdoe@example.com',
           employee_id:                  'E12345',
-          on_premises_sam_account_name: 'miverso2',
+          on_premises_sam_account_name: 'jdoe',
           on_premises_domain_name:      'MS',
-          mail_nickname:                'matt.iverson',
+          mail_nickname:                'jdoe',
           department:                   'Engineering',
           job_title:                    'Engineer',
-          company_name:                 'Optum'
+          company_name:                 'ExampleCorp'
         }
       end
 
@@ -177,7 +177,7 @@ RSpec.describe Legion::Extensions::Identity::Entra::Delegated::Identity do
       end
 
       it 'sets canonical_name to the normalized sAMAccountName' do
-        expect(identity.resolve[:canonical_name]).to eq('miverso2')
+        expect(identity.resolve[:canonical_name]).to eq('jdoe')
       end
 
       it 'sets kind to :human' do
@@ -236,13 +236,13 @@ RSpec.describe Legion::Extensions::Identity::Entra::Delegated::Identity do
     context 'when account discovery returns resolved accounts' do
       before do
         allow(account_discovery).to receive(:resolve_all_accounts).and_return([
-                                                                                { canonical_name: 'miverso2',
+                                                                                { canonical_name: 'jdoe',
                                                                                   source:         :entra }
                                                                               ])
       end
 
       it 'returns all discovered Entra accounts' do
-        expect(identity.resolve_all).to eq([{ canonical_name: 'miverso2', source: :entra }])
+        expect(identity.resolve_all).to eq([{ canonical_name: 'jdoe', source: :entra }])
       end
     end
 
