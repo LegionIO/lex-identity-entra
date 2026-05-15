@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+## [0.3.1] - 2026-05-15
+
+### Fixed
+- `refresh_token` returned `from_local_data` after saving, which is nil when vault succeeded and deleted the disk file. Now returns `from_memory` so the caller always gets the refreshed token without triggering a redundant browser re-auth on restart.
+
 ## [0.3.0] - 2026-05-14
 
 ### Added

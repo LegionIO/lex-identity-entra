@@ -130,6 +130,46 @@ RSpec.describe Legion::Extensions::Identity::Entra::Helpers::TokenManager do
         expect(manager.load_token(:delegated)).to eq('fresh-token')
       end
     end
+
+    context 'when vault saves token and deletes local file during refresh' do
+      before do
+        path = File.join(tmpdir, 'entra_delegated.json')
+        File.write(path, JSON.pretty_generate(
+                           'access_token'      => 'expired-token',
+                           'refresh_token'     => 'refresh-token',
+                           'expires_at'        => (Time.now - 3600).utc.iso8601,
+                           'scopes'            => 'User.Read offline_access',
+                           'tenant_id'         => 'tenant-1',
+                           'client_id'         => 'client-1',
+                           'scope_fingerprint' => 'test-fingerprint'
+                         ))
+
+        # Simulate: vault available, save_to_vault succeeds (deletes local), save_to_memory runs
+        allow(manager).to receive(:refresh_token) do |qualifier, _data|
+          manager.save_to_vault(qualifier, access_token:  'refreshed-via-vault',
+                                           refresh_token: 'new-refresh',
+                                           expires_at:    Time.now + 3600,
+                                           scopes:        'User.Read offline_access',
+                                           tenant_id:     'tenant-1',
+                                           client_id:     'client-1')
+          manager.delete_local(qualifier)
+          manager.save_to_memory(qualifier, access_token:      'refreshed-via-vault',
+                                            refresh_token:     'new-refresh',
+                                            expires_at:        Time.now + 3600,
+                                            scopes:            'User.Read offline_access',
+                                            tenant_id:         'tenant-1',
+                                            client_id:         'client-1',
+                                            scope_fingerprint: 'test-fingerprint')
+          manager.from_memory(qualifier)
+        end
+      end
+
+      it 'returns the refreshed token from memory even after local file is deleted' do
+        token = manager.load_token(:delegated)
+        expect(token).to eq('refreshed-via-vault')
+        expect(File).not_to exist(File.join(tmpdir, 'entra_delegated.json'))
+      end
+    end
   end
 
   # ---- save_token ----

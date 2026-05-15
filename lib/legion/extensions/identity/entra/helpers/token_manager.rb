@@ -237,7 +237,7 @@ module Legion
                          scopes:        fetch_key(body, :scope) || auth[:scopes],
                          tenant_id:     auth[:tenant_id],
                          client_id:     auth[:client_id])
-              from_local_data(qualifier)
+              from_memory(qualifier)
             rescue StandardError => e
               handle_exception(e, level: :error, operation: 'token_manager.refresh_token',
                                   qualifier: qualifier)
