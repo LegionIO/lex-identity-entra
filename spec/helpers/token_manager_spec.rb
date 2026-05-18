@@ -272,8 +272,8 @@ RSpec.describe Legion::Extensions::Identity::Entra::Helpers::TokenManager do
     context 'when Legion::Identity::Process is not defined' do
       before { hide_const('Legion::Identity') }
 
-      it 'uses default as the identity segment' do
-        expect(manager.vault_path(:delegated)).to eq('users/default/entra/delegated/auth')
+      it 'returns nil when canonical name is unavailable' do
+        expect(manager.vault_path(:delegated)).to be_nil
       end
     end
 

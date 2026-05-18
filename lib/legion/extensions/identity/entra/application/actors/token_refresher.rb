@@ -22,7 +22,8 @@ module Legion
               end
 
               def enabled? # rubocop:disable Legion/Extension/ActorEnabledSideEffects
-                true
+                auth = Legion::Extensions::Identity::Entra::Helpers::TokenManager.settings_auth
+                auth[:tenant_id] && auth[:client_id] && auth[:client_secret]
               end
 
               def manual

@@ -36,7 +36,7 @@ module Legion
               log.debug("TokenManager.token_data: qualifier=#{qualifier} refresh=#{refresh}")
               vault_data = from_vault_data(qualifier)
               other_data = vault_data || from_local_data(qualifier) || from_memory(qualifier)
-              if other_data && !vault_data && vault_available? && trusted_process_identity?
+              if other_data && !vault_data && vault_available? && canonical_name_available?
                 log.info("TokenManager.token_data: backfilling #{qualifier} token to vault")
                 backfill_saved = save_to_vault(qualifier, access_token:      other_data[:access_token],
                                                           refresh_token:     other_data[:refresh_token],
@@ -85,7 +85,7 @@ module Legion
             end
 
             def from_vault_data(qualifier)
-              return nil unless vault_available? && trusted_process_identity?
+              return nil unless vault_available? && canonical_name_available?
 
               path = vault_path(qualifier)
               log.debug("TokenManager.from_vault_data: reading kv/#{path}")
@@ -112,6 +112,7 @@ module Legion
             def save_to_vault(qualifier, access_token:, refresh_token:, expires_at:,
                               scopes: nil, tenant_id: nil, client_id: nil, scope_fingerprint: nil)
               return unless vault_available?
+              return unless canonical_name_available?
 
               path = vault_path(qualifier)
               cluster = Legion::Crypt.respond_to?(:default_cluster_name) ? Legion::Crypt.default_cluster_name : 'vault'
@@ -279,13 +280,9 @@ module Legion
               auth = settings_auth
               pattern_settings = auth[qualifier.to_sym]
               return pattern_settings[:vault_path] if pattern_settings.is_a?(Hash) && pattern_settings[:vault_path]
+              return nil unless canonical_name_available?
 
-              identity = if trusted_process_identity?
-                           Legion::Identity::Process.canonical_name
-                         else
-                           'default'
-                         end
-              "users/#{identity}/entra/#{qualifier}/auth"
+              "users/#{Legion::Identity::Process.canonical_name}/entra/#{qualifier}/auth"
             end
 
             def local_path(qualifier)
@@ -353,6 +350,14 @@ module Legion
               return true unless Legion::Identity::Process.respond_to?(:trust)
 
               %i[configured verified authenticated].include?(Legion::Identity::Process.trust)
+            end
+
+            def canonical_name_available?
+              return false unless defined?(Legion::Identity::Process)
+              return false unless Legion::Identity::Process.respond_to?(:canonical_name)
+
+              name = Legion::Identity::Process.canonical_name
+              !name.nil? && !name.empty? && name != 'anonymous'
             end
           end
         end
