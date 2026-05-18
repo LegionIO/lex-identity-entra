@@ -354,7 +354,8 @@ module Legion
 
             def canonical_name_available?
               return false unless defined?(Legion::Identity::Process)
-              return false unless Legion::Identity::Process.respond_to?(:canonical_name)
+              return false unless Legion::Identity::Process.respond_to?(:resolved?) &&
+                                  Legion::Identity::Process.resolved?
 
               name = Legion::Identity::Process.canonical_name
               !name.nil? && !name.empty? && name != 'anonymous'
