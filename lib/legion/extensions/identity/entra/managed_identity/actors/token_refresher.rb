@@ -22,7 +22,8 @@ module Legion
               end
 
               def enabled? # rubocop:disable Legion/Extension/ActorEnabledSideEffects
-                true
+                ENV.fetch('IDENTITY_ENDPOINT', nil) || ENV.fetch('AZURE_IMDS_ENABLED', nil) ||
+                  Legion::Settings.dig(:identity, :entra, :managed_identity, :enabled)
               end
 
               def manual

@@ -2,6 +2,17 @@
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-05-18
+
+### Fixed
+- Token refresher actors (workload_identity, application, managed_identity) no longer activate when credentials are absent; eliminates noisy WARN/INFO spam on local dev.
+- Vault read/write operations now require a resolved canonical name before constructing vault paths; prevents 403 errors from writing to `users/anonymous/...` or `users/default/...` before identity resolves.
+- Removed `'default'` fallback from `vault_path`; returns nil when canonical name is unavailable.
+
+### Changed
+- `canonical_name_available?` helper added to TokenManager; guards all vault operations and backfill logic.
+- Tokens save to local disk first, backfill to vault once identity resolves to real canonical name.
+
 ## [0.3.1] - 2026-05-15
 
 ### Fixed
