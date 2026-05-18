@@ -22,7 +22,9 @@ module Legion
               end
 
               def enabled? # rubocop:disable Legion/Extension/ActorEnabledSideEffects
-                ENV['AZURE_TENANT_ID'] && ENV['AZURE_CLIENT_ID'] && ENV['AZURE_FEDERATED_TOKEN_FILE']
+                ENV.fetch('AZURE_TENANT_ID', nil) &&
+                  ENV.fetch('AZURE_CLIENT_ID', nil) &&
+                  ENV.fetch('AZURE_FEDERATED_TOKEN_FILE', nil)
               end
 
               def manual
