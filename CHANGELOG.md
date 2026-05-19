@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+## [0.4.1] - 2026-05-18
+
+### Fixed
+- Require resolved identity before vault operations; prevents 403 errors from writing to placeholder paths
+
 ## [0.4.0] - 2026-05-18
 
 ### Fixed
