@@ -93,10 +93,29 @@ RSpec.describe Legion::Extensions::Identity::Entra::Helpers::TokenManager do
       before do
         broker = double('broker')
         stub_const('Legion::Identity::Broker', broker)
-        allow(broker).to receive(:token_for).with(:entra, qualifier: :delegated).and_return('broker-token')
+        allow(broker).to receive(:token_for)
+          .with(:entra_delegated, qualifier: :delegated).and_return('broker-token')
       end
 
       it 'falls back to the broker after Vault and local file miss' do
+        expect(manager.load_token(:delegated)).to eq('broker-token')
+      end
+    end
+
+    context 'when the broker only registered under the auth actor provider name' do
+      before do
+        # AuthValidator#register_broker registers :entra_delegated. The token
+        # manager must request that exact provider name — a lookup under :entra
+        # would miss the registered provider (issue #5).
+        broker = double('broker')
+        stub_const('Legion::Identity::Broker', broker)
+        allow(broker).to receive(:token_for)
+          .with(:entra, qualifier: :delegated).and_return(nil)
+        allow(broker).to receive(:token_for)
+          .with(:entra_delegated, qualifier: :delegated).and_return('broker-token')
+      end
+
+      it 'requests the same provider name the auth actor registers' do
         expect(manager.load_token(:delegated)).to eq('broker-token')
       end
     end

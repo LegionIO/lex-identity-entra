@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+## [0.5.1] - 2026-07-02
+
+### Fixed
+- Align delegated Broker provider lookup with registration (issue #5). `TokenManager.from_broker` now requests the `:entra_delegated` provider name that `AuthValidator#register_broker` registers; previously it asked Broker for `:entra`, and because Broker provider names are exact keys the delegated token fallback missed the registered provider. Application, workload, and managed-identity token paths are unchanged.
+
 ## [0.5.0] - 2026-07-02
 
 ### Added

@@ -249,7 +249,7 @@ module Legion
               return nil unless defined?(Legion::Identity::Broker)
 
               log.debug("TokenManager.from_broker: requesting token for #{qualifier}")
-              token = Legion::Identity::Broker.token_for(:entra, qualifier: qualifier)
+              token = Legion::Identity::Broker.token_for(:entra_delegated, qualifier: qualifier)
               log.debug("TokenManager.from_broker: #{token ? 'received' : 'not available'}")
               token
             rescue StandardError => e
