@@ -306,6 +306,11 @@ RSpec.describe Legion::Extensions::Identity::Entra::Helpers::TokenManager do
       allow(described_class).to receive(:vault_available?).and_return(true)
       allow(described_class).to receive(:vault_kv_client).and_return(vault_client)
       allow(described_class).to receive(:settings_auth).and_return(tenant_id: 'tenant-1', client_id: 'client-1')
+      # save_to_vault reads the cluster name for a log line; keep it off the real
+      # Legion::Crypt, which isn't booted in the test env.
+      allow(Legion::Crypt).to receive(:respond_to?).and_call_original
+      allow(Legion::Crypt).to receive(:respond_to?).with(:default_cluster_name).and_return(true)
+      allow(Legion::Crypt).to receive(:default_cluster_name).and_return('vault_test')
     end
 
     it 'derives a canonical-free bootstrap path from tenant and client id' do
