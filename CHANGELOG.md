@@ -2,7 +2,10 @@
 
 ## [Unreleased]
 
-## [0.5.1] - 2026-07-02
+## [0.5.2] - 2026-07-02
+
+### Fixed
+- Load delegated Vault token before canonical identity resolution (issue #4). `TokenManager` previously gated all Vault reads/writes on canonical identity availability, but `Delegated::Identity.resolve` needs the token to *produce* that identity — a bootstrap dependency cycle that left Vault-only tokens unrecoverable on a fresh process. Added a canonical-free bootstrap Vault key (derived from tenant id + client id) for delegated tokens: reads prefer the canonical key then fall back to bootstrap; writes go to the bootstrap key before resolution and to both the canonical and bootstrap keys after. Preserves the no-placeholder-path guarantee from 0.4.1; scoped to the delegated pattern, so application/workload/managed-identity token paths are unchanged.
 
 ### Fixed
 - Align delegated Broker provider lookup with registration (issue #5). `TokenManager.from_broker` now requests the `:entra_delegated` provider name that `AuthValidator#register_broker` registers; previously it asked Broker for `:entra`, and because Broker provider names are exact keys the delegated token fallback missed the registered provider. Application, workload, and managed-identity token paths are unchanged.

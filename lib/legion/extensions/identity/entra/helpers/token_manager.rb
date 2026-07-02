@@ -85,15 +85,24 @@ module Legion
             end
 
             def from_vault_data(qualifier)
-              return nil unless vault_available? && canonical_name_available?
+              return nil unless vault_available?
 
-              path = vault_path(qualifier)
+              # Prefer the canonical (post-resolution) path, then fall back to the
+              # bootstrap path so a fresh process can recover a Vault-only token
+              # before Legion::Identity::Process is resolved (issue #4).
+              read_vault_token(qualifier, vault_path(qualifier)) ||
+                read_vault_token(qualifier, bootstrap_vault_path(qualifier))
+            end
+
+            def read_vault_token(qualifier, path)
+              return nil unless path
+
               log.debug("TokenManager.from_vault_data: reading kv/#{path}")
               result = vault_kv_client.read(path)
               normalize_token_data(result&.data)
             rescue StandardError => e
               handle_exception(e, level: :warn, operation: 'token_manager.from_vault_data',
-                                  qualifier: qualifier)
+                                  qualifier: qualifier, path: path)
               nil
             end
 
@@ -112,19 +121,26 @@ module Legion
             def save_to_vault(qualifier, access_token:, refresh_token:, expires_at:,
                               scopes: nil, tenant_id: nil, client_id: nil, scope_fingerprint: nil)
               return unless vault_available?
-              return unless canonical_name_available?
 
-              path = vault_path(qualifier)
+              # When canonical identity is resolved, write the canonical key (and
+              # alias to the bootstrap key so a later fresh process can recover it
+              # before resolution). Before resolution, fall back to the bootstrap
+              # key so we never write to a placeholder (anonymous) canonical path.
+              paths = [vault_path(qualifier), bootstrap_vault_path(qualifier)].compact.uniq
+              return if paths.empty?
+
               cluster = Legion::Crypt.respond_to?(:default_cluster_name) ? Legion::Crypt.default_cluster_name : 'vault'
-              log.info("TokenManager.save_to_vault: writing to #{cluster} :: kv/data/#{path} qualifier=#{qualifier}")
-              vault_kv_client.write(path,
-                                    access_token:      access_token,
-                                    refresh_token:     refresh_token,
-                                    expires_at:        expires_at&.utc&.iso8601,
-                                    scopes:            scopes,
-                                    tenant_id:         tenant_id,
-                                    client_id:         client_id,
-                                    scope_fingerprint: scope_fingerprint)
+              paths.each do |path|
+                log.info("TokenManager.save_to_vault: writing to #{cluster} :: kv/data/#{path} qualifier=#{qualifier}")
+                vault_kv_client.write(path,
+                                      access_token:      access_token,
+                                      refresh_token:     refresh_token,
+                                      expires_at:        expires_at&.utc&.iso8601,
+                                      scopes:            scopes,
+                                      tenant_id:         tenant_id,
+                                      client_id:         client_id,
+                                      scope_fingerprint: scope_fingerprint)
+              end
               log.info('TokenManager.save_to_vault: success')
               true
             rescue StandardError => e
@@ -283,6 +299,26 @@ module Legion
               return nil unless canonical_name_available?
 
               "users/#{Legion::Identity::Process.canonical_name}/entra/#{qualifier}/auth"
+            end
+
+            # Pre-resolution Vault key for delegated tokens, derived from stable
+            # inputs (tenant id + client id) that are available before canonical
+            # identity resolution. Lets a fresh process recover a Vault-only
+            # delegated token so it can resolve identity (issue #4). Scoped to
+            # delegated only — other patterns are unaffected.
+            def bootstrap_vault_path(qualifier)
+              return nil unless qualifier.to_sym == :delegated
+
+              auth = settings_auth
+              pattern_settings = auth[qualifier.to_sym]
+              return pattern_settings[:vault_path] if pattern_settings.is_a?(Hash) && pattern_settings[:vault_path]
+
+              tenant_id = auth[:tenant_id]
+              client_id = auth[:client_id]
+              return nil unless tenant_id && client_id
+
+              account = Digest::MD5.hexdigest("#{tenant_id}:#{client_id}")
+              "bootstrap/entra/#{qualifier}/#{account}/auth"
             end
 
             def local_path(qualifier)

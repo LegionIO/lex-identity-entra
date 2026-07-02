@@ -285,6 +285,103 @@ RSpec.describe Legion::Extensions::Identity::Entra::Helpers::TokenManager do
     end
   end
 
+  # ---- bootstrap Vault path (issue #4) ----
+
+  describe 'Vault-only delegated token before canonical identity resolution' do
+    let(:vault_client) { double('vault_kv_client') }
+
+    let(:token_body) do
+      {
+        access_token:      'bootstrap-token',
+        refresh_token:     'boot-refresh',
+        expires_at:        (Time.now + 3600).utc.iso8601,
+        scopes:            'User.Read offline_access',
+        tenant_id:         'tenant-1',
+        client_id:         'client-1',
+        scope_fingerprint: 'test-fingerprint'
+      }
+    end
+
+    before do
+      allow(Legion::Crypt).to receive(:vault_connected?).and_return(true)
+      allow(Legion::Crypt).to receive(:respond_to?).and_call_original
+      allow(Legion::Crypt).to receive(:respond_to?).with(:write).and_return(true)
+      allow(described_class).to receive(:vault_kv_client).and_return(vault_client)
+      allow(described_class).to receive(:settings_auth).and_return(tenant_id: 'tenant-1', client_id: 'client-1')
+    end
+
+    it 'derives a canonical-free bootstrap path from tenant and client id' do
+      expect(described_class.bootstrap_vault_path(:delegated)).to match(%r{\Abootstrap/entra/delegated/[0-9a-f]{32}/auth\z})
+    end
+
+    it 'does not derive a bootstrap path for non-delegated qualifiers' do
+      expect(described_class.bootstrap_vault_path(:workload_identity)).to be_nil
+    end
+
+    context 'when identity is not yet resolved and the token lives only under the bootstrap key' do
+      before do
+        allow(described_class).to receive(:canonical_name_available?).and_return(false)
+        bootstrap = described_class.bootstrap_vault_path(:delegated)
+        allow(vault_client).to receive(:read).and_return(nil)
+        allow(vault_client).to receive(:read).with(bootstrap).and_return(double('secret', data: token_body))
+      end
+
+      it 'loads the token so identity resolution can proceed' do
+        expect(described_class.load_token(:delegated)).to eq('bootstrap-token')
+      end
+    end
+
+    context 'when saving before identity is resolved' do
+      before { allow(described_class).to receive(:canonical_name_available?).and_return(false) }
+
+      it 'writes to the bootstrap key and never to a placeholder canonical path' do
+        bootstrap = described_class.bootstrap_vault_path(:delegated)
+        allow(vault_client).to receive(:write)
+
+        described_class.save_to_vault(:delegated, access_token: 'boot', refresh_token: 'r',
+                                                   expires_at: Time.now + 3600, tenant_id: 'tenant-1',
+                                                   client_id: 'client-1')
+
+        expect(vault_client).to have_received(:write).with(bootstrap, hash_including(access_token: 'boot'))
+        expect(vault_client).to have_received(:write).once
+      end
+    end
+
+    context 'when saving after identity resolves' do
+      before do
+        allow(described_class).to receive(:canonical_name_available?).and_return(true)
+        allow(described_class).to receive(:vault_path).with(:delegated).and_return('users/jdoe/entra/delegated/auth')
+      end
+
+      it 'writes the canonical key and aliases the bootstrap key' do
+        bootstrap = described_class.bootstrap_vault_path(:delegated)
+        allow(vault_client).to receive(:write)
+
+        described_class.save_to_vault(:delegated, access_token: 'boot', refresh_token: 'r',
+                                                   expires_at: Time.now + 3600, tenant_id: 'tenant-1',
+                                                   client_id: 'client-1')
+
+        expect(vault_client).to have_received(:write).with('users/jdoe/entra/delegated/auth', anything)
+        expect(vault_client).to have_received(:write).with(bootstrap, anything)
+      end
+    end
+
+    context 'when the canonical token exists' do
+      before do
+        allow(described_class).to receive(:canonical_name_available?).and_return(true)
+        allow(described_class).to receive(:vault_path).with(:delegated).and_return('users/jdoe/entra/delegated/auth')
+      end
+
+      it 'reads the canonical key without falling through to bootstrap' do
+        allow(vault_client).to receive(:read)
+          .with('users/jdoe/entra/delegated/auth').and_return(double('secret', data: token_body))
+
+        expect(described_class.load_token(:delegated)).to eq('bootstrap-token')
+        expect(vault_client).to have_received(:read).with('users/jdoe/entra/delegated/auth')
+      end
+    end
+  end
+
   # ---- vault_path ----
 
   describe '.vault_path' do
