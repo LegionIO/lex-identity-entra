@@ -32,7 +32,7 @@ module Legion
                 deadline = Time.now + timeout
                 current_interval = interval
 
-                loop do
+                while Time.now <= deadline
                   body = oauth_post(tenant_id, 'oauth2/v2.0/token',
                                     grant_type:  'urn:ietf:params:oauth:grant-type:device_code',
                                     client_id:   client_id,
@@ -44,10 +44,6 @@ module Legion
 
                   case body[:error]
                   when 'authorization_pending'
-                    if Time.now > deadline
-                      log.warn("Login.poll_device_code: timed out after #{timeout}s")
-                      return { error: 'timeout', description: "Device code flow timed out after #{timeout}s" }
-                    end
                     sleep(current_interval)
                   when 'slow_down'
                     current_interval += 5
@@ -57,6 +53,9 @@ module Legion
                     return { error: body[:error], description: body[:error_description] }
                   end
                 end
+
+                log.warn("Login.poll_device_code: timed out after #{timeout}s")
+                { error: 'timeout', description: "Device code flow timed out after #{timeout}s" }
               rescue StandardError => e
                 handle_exception(e, level: :error, operation: 'delegated.login.poll_device_code')
                 { error: 'request_failed', description: e.message }
