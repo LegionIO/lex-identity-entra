@@ -303,9 +303,7 @@ RSpec.describe Legion::Extensions::Identity::Entra::Helpers::TokenManager do
     end
 
     before do
-      allow(Legion::Crypt).to receive(:vault_connected?).and_return(true)
-      allow(Legion::Crypt).to receive(:respond_to?).and_call_original
-      allow(Legion::Crypt).to receive(:respond_to?).with(:write).and_return(true)
+      allow(described_class).to receive(:vault_available?).and_return(true)
       allow(described_class).to receive(:vault_kv_client).and_return(vault_client)
       allow(described_class).to receive(:settings_auth).and_return(tenant_id: 'tenant-1', client_id: 'client-1')
     end
