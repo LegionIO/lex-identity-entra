@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-07-02
+
+### Added
+- Opt-in `:mail` delegated scope category (`Mail.Read` + `Mail.Send` only) for the lex-outlook build (ADR-0005). Least privilege: excludes `Mail.ReadWrite`, `MailboxSettings.Read`, and `Mail.Read.Shared`. Not a member of the default-enabled `:microsoft_graph` category, so existing delegated/Teams installs are unaffected.
+
+### Note
+- Enabling `:mail` in `identity.entra.delegated.scopes.enabled_categories` changes the delegated `scope_fingerprint` and forces a **one-time re-consent** for that qualifier. This is expected behavior (least-privilege scope opt-in), not an error.
+
 ## [0.4.1] - 2026-05-18
 
 ### Fixed

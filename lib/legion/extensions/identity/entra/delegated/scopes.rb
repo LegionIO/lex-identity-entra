@@ -24,6 +24,22 @@ module Legion
                 CallTranscripts.Read.All
                 Channel.ReadBasic.All
               ],
+              # Opt-in mailbox access for the signed-in user (lex-outlook, ADR-0005).
+              # Least privilege: Mail.Read + Mail.Send ONLY. Deliberately excludes
+              # Mail.ReadWrite (create/update/delete/move), MailboxSettings.Read
+              # (auto-reply/timezone/working-hours), and Mail.Read.Shared — no v1
+              # lex-outlook runner needs them, so they are deferred to a later
+              # fingerprint-changing edit when a runner actually requires them.
+              #
+              # NOT a member of :microsoft_graph, so existing delegated/Teams
+              # installs see no scope change and no forced re-consent. Enabling
+              # :mail in identity.entra.delegated.scopes.enabled_categories changes
+              # the delegated scope_fingerprint and forces a one-time re-consent for
+              # that qualifier — expected behavior, not an error (see README).
+              mail:                         %w[
+                Mail.Read
+                Mail.Send
+              ],
               teams:                        %w[
                 Chat.Create
                 Chat.Read

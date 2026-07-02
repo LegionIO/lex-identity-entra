@@ -83,11 +83,18 @@ identity:
 | Category | Description |
 |----------|-------------|
 | `microsoft_graph` | Core Graph API: User.Read, Files, Devices, OpenID scopes |
+| `mail` | Mailbox access for lex-outlook: `Mail.Read` + `Mail.Send` only (opt-in) |
 | `teams` | Teams, Chat, Channel, OnlineMeetings, Presence, Activity |
 | `one_note` | OneNote notebook read/write |
 | `sharepoint` | SharePoint/OneDrive files and sites |
 | `azure_communication_services` | Teams calls and chat management |
 | `yammer` | Viva Engage / Yammer communities and conversations |
+
+> **Note on `:mail`** — the `mail` category is opt-in and is **not** part of the
+> default-enabled `microsoft_graph` set, so existing delegated installs see no scope
+> change. Adding `mail` to `identity.entra.delegated.scopes.enabled_categories` changes
+> the delegated `scope_fingerprint` and forces a **one-time re-consent** for that
+> qualifier on next boot. This is expected least-privilege behavior, not an error.
 
 ## Token storage
 
