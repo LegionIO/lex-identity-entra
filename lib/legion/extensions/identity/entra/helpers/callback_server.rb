@@ -56,7 +56,7 @@ module Legion
             private
 
             def listen
-              loop do
+              until @result
                 client = @server.accept
                 request_line = client.gets
                 drain_headers(client)
@@ -64,7 +64,6 @@ module Legion
 
                 client.print "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nConnection: close\r\n\r\n#{RESPONSE_HTML}"
                 client.close
-                break if @result
               end
             rescue IOError # rubocop:disable Legion/RescueLogging/NoCapture
               nil
@@ -76,10 +75,8 @@ module Legion
             end
 
             def drain_headers(client)
-              loop do
-                line = client.gets
-                break if line.nil? || line.strip.empty?
-              end
+              line = client.gets
+              line = client.gets until line.nil? || line.strip.empty?
             end
 
             def capture_callback(request_line)
