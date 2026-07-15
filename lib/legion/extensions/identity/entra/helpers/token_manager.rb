@@ -51,6 +51,10 @@ module Legion
               return nil unless data
 
               if scope_fingerprint_stale?(qualifier, data)
+                if refresh && data[:refresh_token]
+                  log.info("TokenManager.token_data: scope fingerprint mismatch for #{qualifier}, attempting refresh with current scopes")
+                  return refresh_token(qualifier, data)
+                end
                 log.info("TokenManager.token_data: scope fingerprint mismatch for #{qualifier}, forcing re-auth")
                 return nil
               end

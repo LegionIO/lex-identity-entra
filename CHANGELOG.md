@@ -1,6 +1,8 @@
 # Changelog
 
-## [Unreleased]
+## [0.5.3] - 2026-07-15
+### Fixed
+- Fix token refresh dead-end: refresh when token exists regardless of authenticated? state
 
 ## [0.5.2] - 2026-07-02
 
