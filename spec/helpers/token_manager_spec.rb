@@ -242,6 +242,84 @@ RSpec.describe Legion::Extensions::Identity::Entra::Helpers::TokenManager do
     end
   end
 
+  # ---- scope fingerprint mismatch with refresh_token (issue #7 / E1) ----
+
+  describe '.token_data scope fingerprint mismatch' do
+    context 'when fingerprint is stale but refresh_token is present and refresh: true' do
+      before do
+        path = File.join(tmpdir, 'entra_delegated.json')
+        File.write(path, JSON.pretty_generate(
+                           'access_token'      => 'stale-fp-token',
+                           'refresh_token'     => 'valid-refresh',
+                           'expires_at'        => (Time.now + 3600).utc.iso8601,
+                           'scopes'            => 'User.Read offline_access',
+                           'tenant_id'         => 'tenant-1',
+                           'client_id'         => 'client-1',
+                           'scope_fingerprint' => 'old-fingerprint'
+                         ))
+        allow(described_class).to receive(:current_scope_fingerprint).and_return('new-fingerprint')
+        allow(described_class).to receive(:refresh_token).and_return(
+          {
+            access_token:  'refreshed-after-fp-change',
+            refresh_token: 'new-refresh',
+            expires_at:    Time.now + 3600,
+            scopes:        'User.Read offline_access Mail.Read',
+            tenant_id:     'tenant-1',
+            client_id:     'client-1'
+          }
+        )
+      end
+
+      it 'attempts refresh instead of returning nil' do
+        result = manager.token_data(:delegated, refresh: true)
+        expect(result[:access_token]).to eq('refreshed-after-fp-change')
+        expect(described_class).to have_received(:refresh_token)
+      end
+    end
+
+    context 'when fingerprint is stale, refresh_token is present, but refresh: false' do
+      before do
+        path = File.join(tmpdir, 'entra_delegated.json')
+        File.write(path, JSON.pretty_generate(
+                           'access_token'      => 'stale-fp-token',
+                           'refresh_token'     => 'valid-refresh',
+                           'expires_at'        => (Time.now + 3600).utc.iso8601,
+                           'scopes'            => 'User.Read offline_access',
+                           'tenant_id'         => 'tenant-1',
+                           'client_id'         => 'client-1',
+                           'scope_fingerprint' => 'old-fingerprint'
+                         ))
+        allow(described_class).to receive(:current_scope_fingerprint).and_return('new-fingerprint')
+      end
+
+      it 'returns nil (no refresh attempted)' do
+        result = manager.token_data(:delegated, refresh: false)
+        expect(result).to be_nil
+      end
+    end
+
+    context 'when fingerprint is stale and no refresh_token is present' do
+      before do
+        path = File.join(tmpdir, 'entra_delegated.json')
+        File.write(path, JSON.pretty_generate(
+                           'access_token'      => 'stale-fp-token',
+                           'refresh_token'     => nil,
+                           'expires_at'        => (Time.now + 3600).utc.iso8601,
+                           'scopes'            => 'User.Read',
+                           'tenant_id'         => 'tenant-1',
+                           'client_id'         => 'client-1',
+                           'scope_fingerprint' => 'old-fingerprint'
+                         ))
+        allow(described_class).to receive(:current_scope_fingerprint).and_return('new-fingerprint')
+      end
+
+      it 'returns nil (forces re-auth)' do
+        result = manager.token_data(:delegated, refresh: true)
+        expect(result).to be_nil
+      end
+    end
+  end
+
   # ---- vault_available? ----
 
   describe '.vault_available?' do

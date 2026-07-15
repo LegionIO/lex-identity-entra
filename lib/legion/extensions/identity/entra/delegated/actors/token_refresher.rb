@@ -27,18 +27,20 @@ module Legion
 
               def manual
                 log.debug('Delegated TokenRefresher tick')
-                unless Legion::Extensions::Identity::Entra::Helpers::TokenManager.authenticated?(:delegated)
-                  log.debug('No active delegated token, skipping refresh')
+                data = stored_raw_data
+
+                unless data && data[:refresh_token]
+                  log.debug('No stored delegated token with refresh_token, skipping refresh')
                   return
                 end
 
-                data = Legion::Extensions::Identity::Entra::Helpers::TokenManager.token_data(:delegated, refresh: false)
-                if data && !Legion::Extensions::Identity::Entra::Helpers::TokenManager.expired?(data)
+                unless Legion::Extensions::Identity::Entra::Helpers::TokenManager.expired?(data) ||
+                       Legion::Extensions::Identity::Entra::Helpers::TokenManager.scope_fingerprint_stale?(:delegated, data)
                   log.debug('Delegated token still valid')
                   return
                 end
 
-                log.info('Delegated token nearing expiry, refreshing')
+                log.info('Delegated token expired or stale, refreshing')
                 refreshed = Legion::Extensions::Identity::Entra::Helpers::TokenManager.token_data(:delegated, refresh: true)
                 if refreshed && !Legion::Extensions::Identity::Entra::Helpers::TokenManager.expired?(refreshed)
                   Legion::Extensions::Identity::Entra::Client.reset!(pattern: :delegated)
@@ -52,6 +54,12 @@ module Legion
               end
 
               private
+
+              def stored_raw_data
+                Legion::Extensions::Identity::Entra::Helpers::TokenManager.from_vault_data(:delegated) ||
+                  Legion::Extensions::Identity::Entra::Helpers::TokenManager.from_local_data(:delegated) ||
+                  Legion::Extensions::Identity::Entra::Helpers::TokenManager.from_memory(:delegated)
+              end
 
               def attempt_browser_reauth
                 auth_settings = Legion::Extensions::Identity::Entra::Helpers::TokenManager.settings_auth

@@ -35,6 +35,8 @@ module Legion
                     attempt_browser_reauth
                   end
                 elsif previously_authenticated?
+                  raw_data = stored_token_data
+                  log.warn('Entra delegated token expired but refresh_token available — refresh may be stuck') if raw_data && raw_data[:refresh_token]
                   if Legion::Extensions::Identity::Entra::Helpers::TokenManager.scope_fingerprint_stale?(:delegated)
                     log.info('Entra delegated scope fingerprint changed, re-authenticating to acquire updated scopes')
                   else
@@ -139,6 +141,10 @@ module Legion
               def previously_authenticated?
                 path = Legion::Extensions::Identity::Entra::Helpers::TokenManager.local_path(:delegated)
                 File.exist?(path)
+              end
+
+              def stored_token_data
+                Legion::Extensions::Identity::Entra::Helpers::TokenManager.token_data(:delegated, refresh: false)
               end
             end
           end
