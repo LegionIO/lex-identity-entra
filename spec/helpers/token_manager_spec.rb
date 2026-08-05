@@ -363,9 +363,9 @@ RSpec.describe Legion::Extensions::Identity::Entra::Helpers::TokenManager do
     end
   end
 
-  # ---- bootstrap Vault path (issue #4) ----
+  # ---- canonical Vault path ----
 
-  describe 'Vault-only delegated token before canonical identity resolution' do
+  describe 'delegated Vault token persistence' do
     let(:vault_client) { double('vault_kv_client') }
 
     let(:token_body) do
@@ -391,40 +391,19 @@ RSpec.describe Legion::Extensions::Identity::Entra::Helpers::TokenManager do
       allow(Legion::Crypt).to receive(:default_cluster_name).and_return('vault_test')
     end
 
-    it 'derives a canonical-free bootstrap path from tenant and client id' do
-      expect(described_class.bootstrap_vault_path(:delegated)).to match(%r{\Abootstrap/entra/delegated/[0-9a-f]{32}/auth\z})
-    end
-
-    it 'does not derive a bootstrap path for non-delegated qualifiers' do
-      expect(described_class.bootstrap_vault_path(:workload_identity)).to be_nil
-    end
-
-    context 'when identity is not yet resolved and the token lives only under the bootstrap key' do
+    context 'when identity is not yet resolved' do
       before do
         allow(described_class).to receive(:canonical_name_available?).and_return(false)
-        bootstrap = described_class.bootstrap_vault_path(:delegated)
-        allow(vault_client).to receive(:read).and_return(nil)
-        allow(vault_client).to receive(:read).with(bootstrap).and_return(double('secret', data: token_body))
       end
 
-      it 'loads the token so identity resolution can proceed' do
-        expect(described_class.load_token(:delegated)).to eq('bootstrap-token')
-      end
-    end
-
-    context 'when saving before identity is resolved' do
-      before { allow(described_class).to receive(:canonical_name_available?).and_return(false) }
-
-      it 'writes to the bootstrap key and never to a placeholder canonical path' do
-        bootstrap = described_class.bootstrap_vault_path(:delegated)
+      it 'does not write a token to Vault without a canonical user path' do
         allow(vault_client).to receive(:write)
 
         described_class.save_to_vault(:delegated, access_token: 'boot', refresh_token: 'r',
                                                    expires_at: Time.now + 3600, tenant_id: 'tenant-1',
                                                    client_id: 'client-1')
 
-        expect(vault_client).to have_received(:write).with(bootstrap, hash_including(access_token: 'boot'))
-        expect(vault_client).to have_received(:write).once
+        expect(vault_client).not_to have_received(:write)
       end
     end
 
@@ -434,8 +413,7 @@ RSpec.describe Legion::Extensions::Identity::Entra::Helpers::TokenManager do
         allow(described_class).to receive(:vault_path).with(:delegated).and_return('users/jdoe/entra/delegated/auth')
       end
 
-      it 'writes the canonical key and aliases the bootstrap key' do
-        bootstrap = described_class.bootstrap_vault_path(:delegated)
+      it 'writes only the canonical user key' do
         allow(vault_client).to receive(:write)
 
         described_class.save_to_vault(:delegated, access_token: 'boot', refresh_token: 'r',
@@ -443,7 +421,7 @@ RSpec.describe Legion::Extensions::Identity::Entra::Helpers::TokenManager do
                                                    client_id: 'client-1')
 
         expect(vault_client).to have_received(:write).with('users/jdoe/entra/delegated/auth', anything)
-        expect(vault_client).to have_received(:write).with(bootstrap, anything)
+        expect(vault_client).to have_received(:write).once
       end
     end
 

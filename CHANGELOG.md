@@ -1,5 +1,9 @@
 # Changelog
 
+## [0.5.4] - 2026-08-04
+### Fixed
+- Stop writing delegated Entra tokens to bootstrap Vault paths. Token persistence now uses only the canonical `users/<identity>/entra/<qualifier>/auth` Vault path and falls back to local disk until a canonical identity is available.
+
 ## [0.5.3] - 2026-07-15
 ### Fixed
 - Fix token refresh dead-end: refresh when token exists regardless of authenticated? state
