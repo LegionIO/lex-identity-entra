@@ -1,24 +1,17 @@
 # frozen_string_literal: true
 
 require 'spec_helper'
-require 'tmpdir'
 
 RSpec.describe Legion::Extensions::Identity::Entra::Delegated::Actor::TokenRefresher do
   subject(:refresher) { described_class.allocate }
 
   let(:manager) { Legion::Extensions::Identity::Entra::Helpers::TokenManager }
-  let(:tmpdir) { Dir.mktmpdir('entra-tokens') }
 
   before do
-    stub_const('Legion::Extensions::Identity::Entra::Helpers::TokenManager::TOKEN_DIR', tmpdir)
     allow(Legion::Crypt).to receive(:vault_connected?).and_return(false)
     allow(manager).to receive(:current_scope_fingerprint).and_return('test-fingerprint')
     manager.memory_store.clear
     refresher.define_singleton_method(:log) { Logger.new(File::NULL) }
-  end
-
-  after do
-    FileUtils.rm_rf(tmpdir)
   end
 
   describe '#manual' do

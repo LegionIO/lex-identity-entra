@@ -1,7 +1,6 @@
 # frozen_string_literal: true
 
 require 'spec_helper'
-require 'tmpdir'
 
 RSpec.describe Legion::Extensions::Identity::Entra::Delegated::Actor::AuthValidator do
   subject(:validator) { described_class.allocate }
@@ -10,21 +9,15 @@ RSpec.describe Legion::Extensions::Identity::Entra::Delegated::Actor::AuthValida
   let(:manager) { Legion::Extensions::Identity::Entra::Helpers::TokenManager }
   let(:lease) { double('lease') }
   let(:broker) { double('broker') }
-  let(:tmpdir) { Dir.mktmpdir('entra-tokens') }
 
   before do
     stub_const('Legion::Identity::Broker', broker)
-    stub_const('Legion::Extensions::Identity::Entra::Helpers::TokenManager::TOKEN_DIR', tmpdir)
     allow(Legion::Crypt).to receive(:vault_connected?).and_return(false)
     allow(manager).to receive(:current_scope_fingerprint).and_return('test-fingerprint')
     manager.memory_store.clear
     validator.define_singleton_method(:log) { Logger.new(File::NULL) }
     allow(identity_module).to receive(:provide_token).with(qualifier: :delegated).and_return(lease)
     allow(broker).to receive(:register_provider)
-  end
-
-  after do
-    FileUtils.rm_rf(tmpdir)
   end
 
   describe '#register_broker' do
@@ -61,16 +54,13 @@ RSpec.describe Legion::Extensions::Identity::Entra::Delegated::Actor::AuthValida
 
     context 'when previously authenticated with an expired token that has a refresh_token' do
       before do
-        path = File.join(tmpdir, 'entra_delegated.json')
-        File.write(path, JSON.pretty_generate(
-                           'access_token'      => 'expired-token',
-                           'refresh_token'     => 'still-valid-refresh',
-                           'expires_at'        => (Time.now - 3600).utc.iso8601,
-                           'scopes'            => 'User.Read offline_access',
-                           'tenant_id'         => 'tenant-1',
-                           'client_id'         => 'client-1',
-                           'scope_fingerprint' => 'test-fingerprint'
-                         ))
+        manager.save_to_memory(:delegated, access_token:      'expired-token',
+                                           refresh_token:     'still-valid-refresh',
+                                           expires_at:        Time.now - 3600,
+                                           scopes:            'User.Read offline_access',
+                                           tenant_id:         'tenant-1',
+                                           client_id:         'client-1',
+                                           scope_fingerprint: 'test-fingerprint')
         allow(validator).to receive(:attempt_browser_reauth)
       end
 
@@ -82,13 +72,10 @@ RSpec.describe Legion::Extensions::Identity::Entra::Delegated::Actor::AuthValida
 
     context 'when previously authenticated with an expired token that has no refresh_token' do
       before do
-        path = File.join(tmpdir, 'entra_delegated.json')
-        File.write(path, JSON.pretty_generate(
-                           'access_token'      => 'expired-token',
-                           'refresh_token'     => nil,
-                           'expires_at'        => (Time.now - 3600).utc.iso8601,
-                           'scope_fingerprint' => 'test-fingerprint'
-                         ))
+        manager.save_to_memory(:delegated, access_token:      'expired-token',
+                                           refresh_token:     nil,
+                                           expires_at:        Time.now - 3600,
+                                           scope_fingerprint: 'test-fingerprint')
         allow(validator).to receive(:attempt_browser_reauth)
       end
 

@@ -7,7 +7,7 @@ and workload identity authentication patterns.
 ## Features
 
 - **Delegated auth** — OAuth2 PKCE browser flow with local callback server; device-code fallback
-- **Token persistence** — Vault-first (`kv/data/users/<identity>/entra/<qualifier>/auth`), disk fallback, in-memory fallback; disk file deleted once Vault write succeeds
+- **Token persistence** — in-memory by default; Vault (`kv/data/users/<identity>/entra/<qualifier>/auth`) reading and writing are separate opt-ins via `vault_read_enabled` / `vault_write_enabled`. Tokens are never written to local disk
 - **Scope fingerprinting** — MD5 fingerprint of active scopes stored with token; any scope change forces re-authentication on next boot
 - **Identity integration** — `AuthValidator` upgrades `Legion::Identity::Process` via `Resolver.upgrade!` and registers with `Legion::Identity::Broker` for cross-extension token access
 - **Application credentials** — client credentials flow for service-to-service auth
@@ -36,6 +36,8 @@ identity:
         auto_authenticate: false   # set true to open browser automatically at boot
         callback_timeout: 120
       token:
+        vault_read_enabled: false   # set true to read the token from Vault
+        vault_write_enabled: false  # set true to write the token to Vault
         refresh_buffer: 60
         refresh_interval: 900
       scopes:
@@ -98,11 +100,10 @@ identity:
 
 ## Token storage
 
-| Backend | Path | Priority |
-|---------|------|----------|
-| HashiCorp Vault | `kv/data/users/<identity>/entra/delegated/auth` | 1 (preferred) |
-| Local disk | `~/.legionio/tokens/entra_delegated.json` | 2 (fallback, deleted when Vault succeeds) |
-| Memory | In-process store | 3 (runtime fallback) |
+| Backend | Path | When used |
+|---------|------|-----------|
+| HashiCorp Vault | `kv/data/users/<identity>/entra/delegated/auth` | Only when opted in: `vault_read_enabled` / `vault_write_enabled` (both default `false`) |
+| Memory | In-process store | Default persistence; tokens are never written to local disk |
 
 ## Identity provider contract
 
