@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.6.0] - 2026-09-25
+### Changed
+- **Breaking**: Vault token persistence is now opt-in in both directions. New per-pattern settings `identity.entra.<pattern>.token.vault_read_enabled` and `vault_write_enabled`, both defaulting to `false`. With the defaults, Entra tokens are never read from or written to Vault — persistence is local disk + memory only. Set the flags explicitly to restore 0.5.x Vault behavior (each direction is independent).
+- Upgrades from 0.5.x where the token exists only in Vault (local file deleted once the Vault write succeeded) will not read that token by default: expect a one-time re-auth, or set `vault_read_enabled: true`.
+
 ## [0.5.4] - 2026-08-04
 ### Fixed
 - Stop writing delegated Entra tokens to bootstrap Vault paths. Token persistence now uses only the canonical `users/<identity>/entra/<qualifier>/auth` Vault path and falls back to local disk until a canonical identity is available.
