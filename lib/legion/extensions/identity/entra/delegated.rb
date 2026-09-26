@@ -35,10 +35,12 @@ module Legion
                 category_overrides: {}
               },
               token:        {
-                vault_path:       nil,
-                local_token_path: nil,
-                refresh_buffer:   60,
-                refresh_interval: 900
+                vault_read_enabled:  false,
+                vault_write_enabled: false,
+                vault_path:          nil,
+                local_token_path:    nil,
+                refresh_buffer:      60,
+                refresh_interval:    900
               },
               browser_auth: {
                 auto_authenticate:  false,

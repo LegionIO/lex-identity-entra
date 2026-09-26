@@ -36,7 +36,8 @@ module Legion
               log.debug("TokenManager.token_data: qualifier=#{qualifier} refresh=#{refresh}")
               vault_data = from_vault_data(qualifier)
               other_data = vault_data || from_local_data(qualifier) || from_memory(qualifier)
-              if other_data && !vault_data && vault_available? && canonical_name_available?
+              if other_data && !vault_data && vault_write_enabled?(qualifier) &&
+                 vault_available? && canonical_name_available?
                 log.info("TokenManager.token_data: backfilling #{qualifier} token to vault")
                 backfill_saved = save_to_vault(qualifier, access_token:      other_data[:access_token],
                                                           refresh_token:     other_data[:refresh_token],
@@ -89,6 +90,7 @@ module Legion
             end
 
             def from_vault_data(qualifier)
+              return nil unless vault_read_enabled?(qualifier)
               return nil unless vault_available? && canonical_name_available?
 
               read_vault_token(qualifier, vault_path(qualifier))
@@ -120,6 +122,7 @@ module Legion
 
             def save_to_vault(qualifier, access_token:, refresh_token:, expires_at:,
                               scopes: nil, tenant_id: nil, client_id: nil, scope_fingerprint: nil)
+              return unless vault_write_enabled?(qualifier)
               return unless vault_available?
               return unless canonical_name_available?
 
@@ -278,6 +281,14 @@ module Legion
 
             def authenticated?(qualifier = :delegated)
               !load_token(qualifier).nil?
+            end
+
+            def vault_read_enabled?(qualifier)
+              Legion::Settings.dig(:identity, :entra, qualifier.to_sym, :token, :vault_read_enabled)
+            end
+
+            def vault_write_enabled?(qualifier)
+              Legion::Settings.dig(:identity, :entra, qualifier.to_sym, :token, :vault_write_enabled)
             end
 
             def vault_available?

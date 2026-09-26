@@ -363,6 +363,59 @@ RSpec.describe Legion::Extensions::Identity::Entra::Helpers::TokenManager do
     end
   end
 
+  # ---- vault opt-in flags ----
+
+  describe 'vault opt-in flags' do
+    context 'when the flags are not set (default)' do
+      it 'leaves vault reads and writes disabled' do
+        expect(manager.vault_read_enabled?(:delegated)).to be_falsy
+        expect(manager.vault_write_enabled?(:delegated)).to be_falsy
+      end
+
+      it 'does not write to vault even when vault is available' do
+        allow(described_class).to receive(:vault_available?).and_return(true)
+        allow(described_class).to receive(:canonical_name_available?).and_return(true)
+        vault_client = double('vault_kv_client')
+        allow(vault_client).to receive(:write)
+        allow(described_class).to receive(:vault_kv_client).and_return(vault_client)
+
+        result = manager.save_to_vault(:delegated, access_token: 'a', refresh_token: 'r',
+                                               expires_at: Time.now + 3600)
+
+        expect(result).to be_nil
+        expect(vault_client).not_to have_received(:write)
+      end
+
+      it 'does not read from vault even when vault is available' do
+        allow(described_class).to receive(:vault_available?).and_return(true)
+        allow(described_class).to receive(:canonical_name_available?).and_return(true)
+        vault_client = double('vault_kv_client')
+        allow(vault_client).to receive(:read)
+        allow(described_class).to receive(:vault_kv_client).and_return(vault_client)
+
+        expect(manager.from_vault_data(:delegated)).to be_nil
+        expect(vault_client).not_to have_received(:read)
+      end
+    end
+
+    context 'when both flags are enabled in settings' do
+      before do
+        @prior_identity = Legion::Settings.get.settings[:identity]
+        Legion::Settings.get.settings[:identity] =
+          { entra: { delegated: { token: { vault_read_enabled: true, vault_write_enabled: true } } } }
+      end
+
+      after do
+        Legion::Settings.get.settings[:identity] = @prior_identity
+      end
+
+      it 'enables vault reads and writes' do
+        expect(manager.vault_read_enabled?(:delegated)).to be true
+        expect(manager.vault_write_enabled?(:delegated)).to be true
+      end
+    end
+  end
+
   # ---- canonical Vault path ----
 
   describe 'delegated Vault token persistence' do
@@ -382,6 +435,8 @@ RSpec.describe Legion::Extensions::Identity::Entra::Helpers::TokenManager do
 
     before do
       allow(described_class).to receive(:vault_available?).and_return(true)
+      allow(described_class).to receive(:vault_read_enabled?).and_return(true)
+      allow(described_class).to receive(:vault_write_enabled?).and_return(true)
       allow(described_class).to receive(:vault_kv_client).and_return(vault_client)
       allow(described_class).to receive(:settings_auth).and_return(tenant_id: 'tenant-1', client_id: 'client-1')
       # save_to_vault reads the cluster name for a log line; keep it off the real
