@@ -57,7 +57,6 @@ module Legion
 
               def stored_raw_data
                 Legion::Extensions::Identity::Entra::Helpers::TokenManager.from_vault_data(:delegated) ||
-                  Legion::Extensions::Identity::Entra::Helpers::TokenManager.from_local_data(:delegated) ||
                   Legion::Extensions::Identity::Entra::Helpers::TokenManager.from_memory(:delegated)
               end
 

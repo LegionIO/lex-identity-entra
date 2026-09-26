@@ -7,7 +7,7 @@ and workload identity authentication patterns.
 ## Features
 
 - **Delegated auth** — OAuth2 PKCE browser flow with local callback server; device-code fallback
-- **Token persistence** — local disk (`~/.legionio/tokens/entra_<qualifier>.json`) + in-memory by default; Vault (`kv/data/users/<identity>/entra/<qualifier>/auth`) reading and writing are separate opt-ins via `vault_read_enabled` / `vault_write_enabled`
+- **Token persistence** — in-memory by default; Vault (`kv/data/users/<identity>/entra/<qualifier>/auth`) reading and writing are separate opt-ins via `vault_read_enabled` / `vault_write_enabled`. Tokens are never written to local disk
 - **Scope fingerprinting** — MD5 fingerprint of active scopes stored with token; any scope change forces re-authentication on next boot
 - **Identity integration** — `AuthValidator` upgrades `Legion::Identity::Process` via `Resolver.upgrade!` and registers with `Legion::Identity::Broker` for cross-extension token access
 - **Application credentials** — client credentials flow for service-to-service auth
@@ -103,8 +103,7 @@ identity:
 | Backend | Path | When used |
 |---------|------|-----------|
 | HashiCorp Vault | `kv/data/users/<identity>/entra/delegated/auth` | Only when opted in: `vault_read_enabled` / `vault_write_enabled` (both default `false`) |
-| Local disk | `~/.legionio/tokens/entra_delegated.json` | Default persistence; used when Vault write is not enabled or fails |
-| Memory | In-process store | Runtime fallback |
+| Memory | In-process store | Default persistence; tokens are never written to local disk |
 
 ## Identity provider contract
 

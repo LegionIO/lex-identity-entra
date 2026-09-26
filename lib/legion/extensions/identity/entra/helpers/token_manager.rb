@@ -2,7 +2,6 @@
 
 require 'concurrent'
 require 'digest'
-require 'fileutils'
 require 'time'
 
 module Legion
@@ -16,7 +15,6 @@ module Legion
             include Legion::Settings::Helper
             include Legion::JSON::Helper
 
-            TOKEN_DIR = File.join(Dir.home, '.legionio', 'tokens')
             REFRESH_BUFFER = 60
             MEMORY_STORE = Concurrent::Hash.new
 
@@ -34,21 +32,7 @@ module Legion
 
             def token_data(qualifier = :delegated, refresh: true)
               log.debug("TokenManager.token_data: qualifier=#{qualifier} refresh=#{refresh}")
-              vault_data = from_vault_data(qualifier)
-              other_data = vault_data || from_local_data(qualifier) || from_memory(qualifier)
-              if other_data && !vault_data && vault_write_enabled?(qualifier) &&
-                 vault_available? && canonical_name_available?
-                log.info("TokenManager.token_data: backfilling #{qualifier} token to vault")
-                backfill_saved = save_to_vault(qualifier, access_token:      other_data[:access_token],
-                                                          refresh_token:     other_data[:refresh_token],
-                                                          expires_at:        other_data[:expires_at],
-                                                          scopes:            other_data[:scopes],
-                                                          tenant_id:         other_data[:tenant_id],
-                                                          client_id:         other_data[:client_id],
-                                                          scope_fingerprint: other_data[:scope_fingerprint])
-                delete_local(qualifier) if backfill_saved
-              end
-              data = other_data
+              data = from_vault_data(qualifier) || from_memory(qualifier)
               return nil unless data
 
               if scope_fingerprint_stale?(qualifier, data)
@@ -71,18 +55,10 @@ module Legion
               log.debug("TokenManager.save_token: qualifier=#{qualifier} expires_in=#{expires_in}")
               expires_at ||= Time.now + expires_in.to_i if expires_in
               fingerprint = current_scope_fingerprint(qualifier)
-              vault_saved = save_to_vault(qualifier, access_token: access_token, refresh_token: refresh_token,
-                                                     expires_at: expires_at, scopes: scopes,
-                                                     tenant_id: tenant_id, client_id: client_id,
-                                                     scope_fingerprint: fingerprint)
-              if vault_saved
-                delete_local(qualifier)
-              else
-                save_to_local(qualifier, access_token: access_token, refresh_token: refresh_token,
-                                         expires_at: expires_at, scopes: scopes,
-                                         tenant_id: tenant_id, client_id: client_id,
-                                         scope_fingerprint: fingerprint)
-              end
+              save_to_vault(qualifier, access_token: access_token, refresh_token: refresh_token,
+                                            expires_at: expires_at, scopes: scopes,
+                                            tenant_id: tenant_id, client_id: client_id,
+                                            scope_fingerprint: fingerprint)
               save_to_memory(qualifier, access_token: access_token, refresh_token: refresh_token,
                                         expires_at: expires_at, scopes: scopes,
                                         tenant_id: tenant_id, client_id: client_id,
@@ -104,18 +80,6 @@ module Legion
               normalize_token_data(result&.data)
             rescue StandardError => e
               handle_exception(e, level: :warn, operation: 'token_manager.from_vault_data',
-                                  qualifier: qualifier, path: path)
-              nil
-            end
-
-            def from_local_data(qualifier)
-              path = local_path(qualifier)
-              return nil unless File.exist?(path)
-
-              log.debug("TokenManager.from_local_data: reading #{path}")
-              normalize_token_data(json_load(File.read(path)))
-            rescue StandardError => e
-              handle_exception(e, level: :warn, operation: 'token_manager.from_local_data',
                                   qualifier: qualifier, path: path)
               nil
             end
@@ -147,38 +111,6 @@ module Legion
               nil
             end
 
-            def save_to_local(qualifier, access_token:, refresh_token:, expires_at:,
-                              scopes: nil, tenant_id: nil, client_id: nil, scope_fingerprint: nil)
-              path = local_path(qualifier)
-              log.debug("TokenManager.save_to_local: writing #{path}")
-              FileUtils.mkdir_p(File.dirname(path))
-              File.write(path, json_dump({
-                                           access_token:      access_token,
-                                           refresh_token:     refresh_token,
-                                           expires_at:        expires_at&.utc&.iso8601,
-                                           scopes:            scopes,
-                                           tenant_id:         tenant_id,
-                                           client_id:         client_id,
-                                           scope_fingerprint: scope_fingerprint
-                                         }))
-              File.chmod(0o600, path)
-              log.debug('TokenManager.save_to_local: success')
-            rescue StandardError => e
-              handle_exception(e, level: :warn, operation: 'token_manager.save_to_local',
-                                  qualifier: qualifier, path: path)
-              nil
-            end
-
-            def delete_local(qualifier)
-              path = local_path(qualifier)
-              return unless File.exist?(path)
-
-              File.delete(path)
-              log.info("TokenManager.delete_local: removed #{path} (vault is authoritative)")
-            rescue StandardError => e
-              handle_exception(e, level: :warn, operation: 'token_manager.delete_local', qualifier: qualifier)
-            end
-
             def from_memory(qualifier)
               data = TokenManager.memory_store[qualifier.to_sym]
               return nil unless data
@@ -207,7 +139,7 @@ module Legion
             end
 
             def scope_fingerprint_stale?(qualifier, data = nil)
-              data ||= from_local_data(qualifier) || from_memory(qualifier)
+              data ||= from_memory(qualifier)
               return false unless data
 
               stored = data[:scope_fingerprint]
@@ -305,14 +237,6 @@ module Legion
               return nil unless canonical_name_available?
 
               "users/#{Legion::Identity::Process.canonical_name}/entra/#{qualifier}/auth"
-            end
-
-            def local_path(qualifier)
-              auth = settings_auth
-              pattern_settings = auth[qualifier.to_sym]
-              return File.expand_path(pattern_settings[:local_token_path]) if pattern_settings.is_a?(Hash) && pattern_settings[:local_token_path]
-
-              File.join(TOKEN_DIR, "entra_#{qualifier}.json")
             end
 
             def settings_auth

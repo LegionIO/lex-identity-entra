@@ -16,19 +16,13 @@ module Legion
             include Legion::Extensions::Helpers::Lex if Legion::Extensions.const_defined?(:Helpers, false) &&
                                                         Legion::Extensions::Helpers.const_defined?(:Lex, false)
 
-            # Returns an array of qualifier symbols for which tokens exist locally.
+            # Returns an array of qualifier symbols for which tokens exist in-process.
             def discovered_qualifiers
-              (local_qualifiers + broker_qualifiers).uniq
+              (memory_qualifiers + broker_qualifiers).uniq
             end
 
-            def local_qualifiers
-              return [] unless File.directory?(Legion::Extensions::Identity::Entra::Helpers::TokenManager::TOKEN_DIR)
-
-              Dir.glob(File.join(Legion::Extensions::Identity::Entra::Helpers::TokenManager::TOKEN_DIR, 'entra_*.json')).filter_map do |path|
-                basename = File.basename(path, '.json')
-                match = basename.match(/\Aentra_(.+)\z/)
-                match[1].to_sym if match
-              end
+            def memory_qualifiers
+              Legion::Extensions::Identity::Entra::Helpers::TokenManager.memory_store.keys
             end
 
             def broker_qualifiers

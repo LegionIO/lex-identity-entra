@@ -139,8 +139,7 @@ module Legion
               end
 
               def previously_authenticated?
-                path = Legion::Extensions::Identity::Entra::Helpers::TokenManager.local_path(:delegated)
-                File.exist?(path)
+                !stored_token_data.nil?
               end
 
               def stored_token_data

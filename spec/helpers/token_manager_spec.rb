@@ -1,15 +1,11 @@
 # frozen_string_literal: true
 
 require 'spec_helper'
-require 'tmpdir'
 
 RSpec.describe Legion::Extensions::Identity::Entra::Helpers::TokenManager do
   subject(:manager) { described_class }
 
-  let(:tmpdir) { Dir.mktmpdir('entra-tokens') }
-
   before do
-    stub_const('Legion::Extensions::Identity::Entra::Helpers::TokenManager::TOKEN_DIR', tmpdir)
     # Ensure vault is unavailable by default so tests don't attempt real vault calls
     allow(Legion::Crypt).to receive(:vault_connected?).and_return(false)
     # Stub scope fingerprint so tokens without a stored fingerprint aren't treated as stale
@@ -18,43 +14,33 @@ RSpec.describe Legion::Extensions::Identity::Entra::Helpers::TokenManager do
     described_class.memory_store.clear
   end
 
-  after do
-    FileUtils.rm_rf(tmpdir)
-  end
-
   # ---- load_token ----
 
   describe '.load_token' do
-    context 'when no Vault and no local file exist' do
+    context 'when no Vault and no in-memory token exist' do
       it 'returns nil' do
         expect(manager.load_token(:delegated)).to be_nil
       end
     end
 
-    context 'when a valid local file exists' do
+    context 'when a valid in-memory token exists' do
       before do
-        path = File.join(tmpdir, 'entra_delegated.json')
-        File.write(path, JSON.pretty_generate(
-                           'access_token'      => 'local-token-abc',
-                           'refresh_token'     => 'refresh-xyz',
-                           'expires_at'        => (Time.now + 3600).utc.iso8601,
-                           'scope_fingerprint' => 'test-fingerprint'
-                         ))
+        manager.save_to_memory(:delegated, access_token:      'local-token-abc',
+                                           refresh_token:     'refresh-xyz',
+                                           expires_at:        Time.now + 3600,
+                                           scope_fingerprint: 'test-fingerprint')
       end
 
-      it 'returns the access token from the local file' do
+      it 'returns the access token from the in-memory store' do
         expect(manager.load_token(:delegated)).to eq('local-token-abc')
       end
     end
 
-    context 'when the local file has an expired token' do
+    context 'when the in-memory token is expired' do
       before do
-        path = File.join(tmpdir, 'entra_delegated.json')
-        File.write(path, JSON.pretty_generate(
-                           'access_token'  => 'expired-token',
-                           'refresh_token' => nil,
-                           'expires_at'    => (Time.now - 3600).utc.iso8601
-                         ))
+        manager.save_to_memory(:delegated, access_token:  'expired-token',
+                                           refresh_token: nil,
+                                           expires_at:    Time.now - 3600)
       end
 
       it 'returns nil' do
@@ -62,30 +48,16 @@ RSpec.describe Legion::Extensions::Identity::Entra::Helpers::TokenManager do
       end
     end
 
-    context 'when the local file has no expires_at' do
+    context 'when the in-memory token has no expires_at' do
       before do
-        path = File.join(tmpdir, 'entra_delegated.json')
-        File.write(path, JSON.pretty_generate(
-                           'access_token'      => 'no-expiry-token',
-                           'refresh_token'     => nil,
-                           'expires_at'        => nil,
-                           'scope_fingerprint' => 'test-fingerprint'
-                         ))
+        manager.save_to_memory(:delegated, access_token:      'no-expiry-token',
+                                           refresh_token:     nil,
+                                           expires_at:        nil,
+                                           scope_fingerprint: 'test-fingerprint')
       end
 
       it 'returns the token (no expiry check)' do
         expect(manager.load_token(:delegated)).to eq('no-expiry-token')
-      end
-    end
-
-    context 'when the local file contains invalid JSON' do
-      before do
-        path = File.join(tmpdir, 'entra_delegated.json')
-        File.write(path, 'not-json')
-      end
-
-      it 'returns nil' do
-        expect(manager.load_token(:delegated)).to be_nil
       end
     end
 
@@ -120,18 +92,15 @@ RSpec.describe Legion::Extensions::Identity::Entra::Helpers::TokenManager do
       end
     end
 
-    context 'when a local token is expired but refreshable' do
+    context 'when an in-memory token is expired but refreshable' do
       before do
-        path = File.join(tmpdir, 'entra_delegated.json')
-        File.write(path, JSON.pretty_generate(
-                           'access_token'      => 'expired-token',
-                           'refresh_token'     => 'refresh-token',
-                           'expires_at'        => (Time.now - 3600).utc.iso8601,
-                           'scopes'            => 'User.Read offline_access',
-                           'tenant_id'         => 'tenant-1',
-                           'client_id'         => 'client-1',
-                           'scope_fingerprint' => 'test-fingerprint'
-                         ))
+        manager.save_to_memory(:delegated, access_token:      'expired-token',
+                                           refresh_token:     'refresh-token',
+                                           expires_at:        Time.now - 3600,
+                                           scopes:            'User.Read offline_access',
+                                           tenant_id:         'tenant-1',
+                                           client_id:         'client-1',
+                                           scope_fingerprint: 'test-fingerprint')
 
         allow(manager).to receive(:refresh_token).and_return(
           {
@@ -150,20 +119,17 @@ RSpec.describe Legion::Extensions::Identity::Entra::Helpers::TokenManager do
       end
     end
 
-    context 'when vault saves token and deletes local file during refresh' do
+    context 'when vault saves token during refresh' do
       before do
-        path = File.join(tmpdir, 'entra_delegated.json')
-        File.write(path, JSON.pretty_generate(
-                           'access_token'      => 'expired-token',
-                           'refresh_token'     => 'refresh-token',
-                           'expires_at'        => (Time.now - 3600).utc.iso8601,
-                           'scopes'            => 'User.Read offline_access',
-                           'tenant_id'         => 'tenant-1',
-                           'client_id'         => 'client-1',
-                           'scope_fingerprint' => 'test-fingerprint'
-                         ))
+        manager.save_to_memory(:delegated, access_token:      'expired-token',
+                                           refresh_token:     'refresh-token',
+                                           expires_at:        Time.now - 3600,
+                                           scopes:            'User.Read offline_access',
+                                           tenant_id:         'tenant-1',
+                                           client_id:         'client-1',
+                                           scope_fingerprint: 'test-fingerprint')
 
-        # Simulate: vault available, save_to_vault succeeds (deletes local), save_to_memory runs
+        # Simulate: save_to_vault succeeds, save_to_memory runs
         allow(manager).to receive(:refresh_token) do |qualifier, _data|
           manager.save_to_vault(qualifier, access_token:  'refreshed-via-vault',
                                            refresh_token: 'new-refresh',
@@ -171,7 +137,6 @@ RSpec.describe Legion::Extensions::Identity::Entra::Helpers::TokenManager do
                                            scopes:        'User.Read offline_access',
                                            tenant_id:     'tenant-1',
                                            client_id:     'client-1')
-          manager.delete_local(qualifier)
           manager.save_to_memory(qualifier, access_token:      'refreshed-via-vault',
                                             refresh_token:     'new-refresh',
                                             expires_at:        Time.now + 3600,
@@ -183,10 +148,8 @@ RSpec.describe Legion::Extensions::Identity::Entra::Helpers::TokenManager do
         end
       end
 
-      it 'returns the refreshed token from memory even after local file is deleted' do
-        token = manager.load_token(:delegated)
-        expect(token).to eq('refreshed-via-vault')
-        expect(File).not_to exist(File.join(tmpdir, 'entra_delegated.json'))
+      it 'returns the refreshed token from memory' do
+        expect(manager.load_token(:delegated)).to eq('refreshed-via-vault')
       end
     end
   end
@@ -194,51 +157,30 @@ RSpec.describe Legion::Extensions::Identity::Entra::Helpers::TokenManager do
   # ---- save_token ----
 
   describe '.save_token' do
-    it 'writes the token file to disk when vault is unavailable' do
+    it 'stores the access_token in memory when vault is unavailable' do
       manager.save_token(:delegated, access_token: 'save-test', refresh_token: 'refresh',
                                      expires_at: Time.now + 7200)
-      path = File.join(tmpdir, 'entra_delegated.json')
-      expect(File.exist?(path)).to be true
+      expect(manager.from_memory(:delegated)[:access_token]).to eq('save-test')
     end
 
-    it 'sets file permissions to 0600' do
-      manager.save_token(:delegated, access_token: 'perm-test', refresh_token: nil,
-                                     expires_at: Time.now + 7200)
-      path = File.join(tmpdir, 'entra_delegated.json')
-      mode = File.stat(path).mode & 0o777
-      expect(mode).to eq(0o600)
-    end
-
-    it 'writes valid JSON containing the access_token' do
-      manager.save_token(:delegated, access_token: 'json-test', refresh_token: 'r',
-                                     expires_at: Time.now + 7200)
-      path = File.join(tmpdir, 'entra_delegated.json')
-      data = JSON.parse(File.read(path))
-      expect(data['access_token']).to eq('json-test')
-    end
-
-    it 'writes the refresh_token' do
+    it 'stores the refresh_token' do
       manager.save_token(:delegated, access_token: 'a', refresh_token: 'my-refresh',
                                      expires_at: Time.now + 7200)
-      path = File.join(tmpdir, 'entra_delegated.json')
-      data = JSON.parse(File.read(path))
-      expect(data['refresh_token']).to eq('my-refresh')
+      expect(manager.from_memory(:delegated)[:refresh_token]).to eq('my-refresh')
     end
 
-    it 'writes the expires_at as ISO8601' do
+    it 'stores the expires_at' do
       expires = Time.now + 7200
       manager.save_token(:delegated, access_token: 'a', refresh_token: nil, expires_at: expires)
-      path = File.join(tmpdir, 'entra_delegated.json')
-      data = JSON.parse(File.read(path))
-      expect(data['expires_at']).to eq(expires.utc.iso8601)
+      expect(manager.from_memory(:delegated)[:expires_at]).to eq(Time.parse(expires.utc.iso8601))
     end
 
-    it 'persists scopes and client metadata when provided' do
+    it 'stores scopes and client metadata when provided' do
       manager.save_token(:delegated, access_token: 'a', refresh_token: nil, expires_at: Time.now + 7200,
                                      scopes: 'User.Read', tenant_id: 'tenant-1', client_id: 'client-1')
-      path = File.join(tmpdir, 'entra_delegated.json')
-      data = JSON.parse(File.read(path))
-      expect(data).to include('scopes' => 'User.Read', 'tenant_id' => 'tenant-1', 'client_id' => 'client-1')
+      expect(manager.from_memory(:delegated)).to include(scopes:    'User.Read',
+                                                         tenant_id: 'tenant-1',
+                                                         client_id: 'client-1')
     end
   end
 
@@ -247,16 +189,13 @@ RSpec.describe Legion::Extensions::Identity::Entra::Helpers::TokenManager do
   describe '.token_data scope fingerprint mismatch' do
     context 'when fingerprint is stale but refresh_token is present and refresh: true' do
       before do
-        path = File.join(tmpdir, 'entra_delegated.json')
-        File.write(path, JSON.pretty_generate(
-                           'access_token'      => 'stale-fp-token',
-                           'refresh_token'     => 'valid-refresh',
-                           'expires_at'        => (Time.now + 3600).utc.iso8601,
-                           'scopes'            => 'User.Read offline_access',
-                           'tenant_id'         => 'tenant-1',
-                           'client_id'         => 'client-1',
-                           'scope_fingerprint' => 'old-fingerprint'
-                         ))
+        manager.save_to_memory(:delegated, access_token:      'stale-fp-token',
+                                           refresh_token:     'valid-refresh',
+                                           expires_at:        Time.now + 3600,
+                                           scopes:            'User.Read offline_access',
+                                           tenant_id:         'tenant-1',
+                                           client_id:         'client-1',
+                                           scope_fingerprint: 'old-fingerprint')
         allow(described_class).to receive(:current_scope_fingerprint).and_return('new-fingerprint')
         allow(described_class).to receive(:refresh_token).and_return(
           {
@@ -279,16 +218,13 @@ RSpec.describe Legion::Extensions::Identity::Entra::Helpers::TokenManager do
 
     context 'when fingerprint is stale, refresh_token is present, but refresh: false' do
       before do
-        path = File.join(tmpdir, 'entra_delegated.json')
-        File.write(path, JSON.pretty_generate(
-                           'access_token'      => 'stale-fp-token',
-                           'refresh_token'     => 'valid-refresh',
-                           'expires_at'        => (Time.now + 3600).utc.iso8601,
-                           'scopes'            => 'User.Read offline_access',
-                           'tenant_id'         => 'tenant-1',
-                           'client_id'         => 'client-1',
-                           'scope_fingerprint' => 'old-fingerprint'
-                         ))
+        manager.save_to_memory(:delegated, access_token:      'stale-fp-token',
+                                           refresh_token:     'valid-refresh',
+                                           expires_at:        Time.now + 3600,
+                                           scopes:            'User.Read offline_access',
+                                           tenant_id:         'tenant-1',
+                                           client_id:         'client-1',
+                                           scope_fingerprint: 'old-fingerprint')
         allow(described_class).to receive(:current_scope_fingerprint).and_return('new-fingerprint')
       end
 
@@ -300,16 +236,13 @@ RSpec.describe Legion::Extensions::Identity::Entra::Helpers::TokenManager do
 
     context 'when fingerprint is stale and no refresh_token is present' do
       before do
-        path = File.join(tmpdir, 'entra_delegated.json')
-        File.write(path, JSON.pretty_generate(
-                           'access_token'      => 'stale-fp-token',
-                           'refresh_token'     => nil,
-                           'expires_at'        => (Time.now + 3600).utc.iso8601,
-                           'scopes'            => 'User.Read',
-                           'tenant_id'         => 'tenant-1',
-                           'client_id'         => 'client-1',
-                           'scope_fingerprint' => 'old-fingerprint'
-                         ))
+        manager.save_to_memory(:delegated, access_token:      'stale-fp-token',
+                                           refresh_token:     nil,
+                                           expires_at:        Time.now + 3600,
+                                           scopes:            'User.Read',
+                                           tenant_id:         'tenant-1',
+                                           client_id:         'client-1',
+                                           scope_fingerprint: 'old-fingerprint')
         allow(described_class).to receive(:current_scope_fingerprint).and_return('new-fingerprint')
       end
 
@@ -521,19 +454,6 @@ RSpec.describe Legion::Extensions::Identity::Entra::Helpers::TokenManager do
       it 'uses the canonical name in the path' do
         expect(manager.vault_path(:delegated)).to eq('users/testuser/entra/delegated/auth')
       end
-    end
-  end
-
-  # ---- local_path ----
-
-  describe '.local_path' do
-    it 'returns a path under TOKEN_DIR' do
-      expected = File.join(tmpdir, 'entra_delegated.json')
-      expect(manager.local_path(:delegated)).to eq(expected)
-    end
-
-    it 'incorporates the qualifier into the filename' do
-      expect(manager.local_path(:privileged)).to end_with('entra_privileged.json')
     end
   end
 end
