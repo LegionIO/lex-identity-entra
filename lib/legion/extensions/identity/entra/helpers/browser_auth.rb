@@ -6,6 +6,7 @@ require 'securerandom'
 require 'faraday'
 
 require 'legion/extensions/identity/entra/helpers/callback_server'
+require 'legion/extensions/identity/entra/helpers/interactive_auth_guard'
 require 'legion/extensions/identity/entra/delegated/runners/login'
 
 module Legion
@@ -23,24 +24,38 @@ module Legion
 
             attr_reader :tenant_id, :client_id, :scopes
 
-            def initialize(tenant_id:, client_id:, scopes: self.class.default_scopes, auth: nil, force_local_server: false, **)
+            DEFAULT_CALLBACK_TIMEOUT = 120
+
+            # automatic: true marks a background (actor-initiated) attempt. Those are
+            # subject to InteractiveAuthGuard backoff/suspension and screen-lock/idle
+            # checks; user-initiated attempts (CLI) only get single-flight protection.
+            def initialize(tenant_id:, client_id:, scopes: self.class.default_scopes, auth: nil, force_local_server: false,
+                           automatic: false, **)
               @tenant_id = tenant_id
               @client_id = client_id
               @scopes = scopes
               @auth = auth || Object.new.extend(Legion::Extensions::Identity::Entra::Delegated::Runners::Login)
               @force_local_server = force_local_server
-              log.debug("BrowserAuth initialized: tenant=#{tenant_id} client=#{client_id} force_local=#{force_local_server}")
+              @automatic = automatic
+              log.debug("BrowserAuth initialized: tenant=#{tenant_id} client=#{client_id} force_local=#{force_local_server} automatic=#{automatic}")
               log.info("BrowserAuth scopes: #{@scopes}")
             end
 
             def authenticate
-              if gui_available?
-                log.info('BrowserAuth: GUI available, using browser auth')
-                authenticate_browser
-              else
-                log.info('BrowserAuth: no GUI detected, using device code flow')
-                authenticate_device_code
+              InteractiveAuthGuard.run(automatic: @automatic) do
+                if gui_available?
+                  log.info('BrowserAuth: GUI available, using browser auth')
+                  authenticate_browser
+                else
+                  log.info('BrowserAuth: no GUI detected, using device code flow')
+                  authenticate_device_code
+                end
               end
+            end
+
+            def callback_timeout
+              value = Legion::Settings.dig(:identity, :entra, :delegated, :browser_auth, :callback_timeout).to_i
+              value.positive? ? value : DEFAULT_CALLBACK_TIMEOUT
             end
 
             def api_hook_available?
@@ -143,8 +158,9 @@ module Legion
                 return authenticate_device_code
               end
 
-              log.debug('BrowserAuth: waiting for callback (timeout=120s)')
-              mutex.synchronize { cv.wait(mutex, 120) unless result_holder[:result] }
+              log.debug("BrowserAuth: waiting for callback (timeout=#{callback_timeout}s)")
+              mutex.synchronize { cv.wait(mutex, callback_timeout) unless result_holder[:result] }
+              Legion::Events.off('identity.entra.oauth.callback', listener) unless result_holder[:result]
               exchange_callback(result_holder[:result], state: state, verifier: verifier, callback_uri: callback_uri)
             end
 
@@ -163,8 +179,8 @@ module Legion
                 return authenticate_device_code
               end
 
-              log.debug('BrowserAuth: waiting for callback on local server (timeout=120s)')
-              result = server.wait_for_callback(timeout: 120)
+              log.debug("BrowserAuth: waiting for callback on local server (timeout=#{callback_timeout}s)")
+              result = server.wait_for_callback(timeout: callback_timeout)
               exchange_callback(result, state: state, verifier: verifier, callback_uri: callback_uri)
             ensure
               server&.shutdown
@@ -172,6 +188,11 @@ module Legion
             end
 
             def exchange_callback(result, state:, verifier:, callback_uri:)
+              if result && result[:error] && !result[:code]
+                log.error("BrowserAuth: OAuth callback returned error=#{result[:error]}")
+                return { error: result[:error].to_s, description: result[:error_description] }
+              end
+
               unless result && result[:code]
                 log.error('BrowserAuth: OAuth callback timed out or missing code')
                 return { error: 'timeout', description: 'No callback received within timeout' }

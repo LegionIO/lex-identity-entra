@@ -49,6 +49,10 @@ module Legion
 end
 
 require 'legion/extensions/identity/entra'
+require 'tmpdir'
+
+ENTRA_SPEC_RUN_DIR = Dir.mktmpdir('lex-identity-entra-run')
+at_exit { FileUtils.rm_rf(ENTRA_SPEC_RUN_DIR) }
 
 RSpec.configure do |config|
   config.expect_with :rspec do |expectations|
@@ -56,5 +60,17 @@ RSpec.configure do |config|
   end
   config.mock_with :rspec do |mocks|
     mocks.verify_partial_doubles = true
+  end
+
+  # Keep InteractiveAuthGuard lock/state files out of the real ~/.legionio and
+  # start every example with a clean guard + refresh negative cache.
+  config.before do
+    guard = Legion::Extensions::Identity::Entra::Helpers::InteractiveAuthGuard
+    FileUtils.rm_f(Dir.glob(File.join(ENTRA_SPEC_RUN_DIR, '*')))
+    allow(guard).to receive_messages(lock_path:  File.join(ENTRA_SPEC_RUN_DIR, 'auth.lock'),
+                                     state_path: File.join(ENTRA_SPEC_RUN_DIR, 'auth_state.json'),
+                                     screen_locked?: false, idle_seconds: nil)
+    guard.reload!
+    Legion::Extensions::Identity::Entra::Helpers::TokenManager.refresh_failures.clear
   end
 end

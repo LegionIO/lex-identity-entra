@@ -2,6 +2,7 @@
 
 require 'socket'
 require 'uri'
+require 'legion/extensions/identity/entra/helpers/callback_page'
 
 module Legion
   module Extensions
@@ -11,11 +12,6 @@ module Legion
           class CallbackServer
             include Legion::Extensions::Helpers::Lex if Legion::Extensions.const_defined?(:Helpers, false) &&
                                                         Legion::Extensions::Helpers.const_defined?(:Lex, false)
-
-            RESPONSE_HTML = <<~HTML
-              <html><body style="font-family:sans-serif;text-align:center;padding:40px;">
-              <h2>Authentication complete</h2><p>You can close this window.</p></body></html>
-            HTML
 
             attr_reader :port
 
@@ -60,9 +56,9 @@ module Legion
                 client = @server.accept
                 request_line = client.gets
                 drain_headers(client)
-                capture_callback(request_line) if request_line&.include?('/callback?')
-
-                client.print "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nConnection: close\r\n\r\n#{RESPONSE_HTML}"
+                status, body = handle_request(request_line)
+                client.print "HTTP/1.1 #{status}\r\nContent-Type: text/html; charset=utf-8\r\n" \
+                             "Content-Length: #{body.bytesize}\r\nConnection: close\r\n\r\n#{body}"
                 client.close
               end
             rescue IOError # rubocop:disable Legion/RescueLogging/NoCapture
@@ -79,17 +75,34 @@ module Legion
               line = client.gets until line.nil? || line.strip.empty?
             end
 
-            def capture_callback(request_line)
-              query = request_line.split[1].split('?', 2).last
+            # Returns [status_line, html]. Only /callback?... completes the flow;
+            # anything else (favicon, probes) gets a 404 and keeps listening.
+            def handle_request(request_line)
+              target = request_line.to_s.split[1].to_s
+              return ['404 Not Found', 'Not Found'] unless target.start_with?('/callback?')
+
+              params = capture_callback(target)
+              if params['code']
+                ['200 OK', CallbackPage.success_html]
+              else
+                ['400 Bad Request', CallbackPage.failure_html(params['error'] || 'missing_code', params['error_description'])]
+              end
+            end
+
+            def capture_callback(target)
+              query = target.split('?', 2).last
               params = URI.decode_www_form(query).to_h
 
               @mutex.synchronize do
                 @result = {
-                  code:  params['code'],
-                  state: params['state']
-                }
+                  code:              params['code'],
+                  state:             params['state'],
+                  error:             params['error'],
+                  error_description: params['error_description']
+                }.compact
                 @cv.broadcast
               end
+              params
             end
 
             def log_debug(message)

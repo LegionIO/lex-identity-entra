@@ -33,8 +33,14 @@ identity:
       client_id: "your-client-id"
     delegated:
       browser_auth:
-        auto_authenticate: false   # set true to open browser automatically at boot
+        auto_authenticate: false   # set true to open browser automatically (boot + token refresher)
         callback_timeout: 120
+        # Guard for automatic (actor-initiated) sign-in:
+        backoff_base_seconds: 1800      # wait after an unanswered tab; doubles each time
+        backoff_max_seconds: 21600
+        max_auto_attempts: 3            # then stop opening tabs until you sign in manually
+        skip_when_screen_locked: true   # macOS: never open tabs while the screen is locked
+        skip_when_idle_seconds: 900     # macOS: skip if no keyboard/mouse input for this long (0 = off)
       token:
         vault_read_enabled: false   # set true to read the token from Vault
         vault_write_enabled: false  # set true to write the token to Vault
@@ -62,6 +68,21 @@ legion lex exec entra auth status
 
 The `AuthValidator` actor fires 9 seconds after boot. If `auto_authenticate: true` is set,
 it opens a browser window automatically. Otherwise trigger login via the CLI.
+
+Interactive sign-in is protected by `Helpers::InteractiveAuthGuard`:
+
+- **Single-flight**: only one browser/device-code attempt runs at a time, per process (mutex) and across
+  processes (`flock` on `~/.legionio/run/entra_browser_auth.lock`).
+- **Backoff**: when an automatic attempt times out, the next one waits `backoff_base_seconds` (default 30 min),
+  doubling up to `backoff_max_seconds`. After `max_auto_attempts` unanswered tabs, automatic sign-in pauses
+  until you sign in manually (`legionio auth teams` or `legion lex exec entra auth login`). Backoff state is
+  kept in `~/.legionio/run/entra_browser_auth_state.json` (no secrets), so restarting the daemon does not
+  reopen a tab right away.
+- **Presence**: on macOS, automatic attempts are skipped while the screen is locked or the user is idle.
+- **No refresh storms**: a refresh token that Microsoft rejects (`invalid_grant` and similar) is not retried
+  until a new token is saved, and transient refresh errors back off from 30 s up to 15 min. One warning tells
+  you how to sign in again.
+- `TokenRefresher` only opens a browser when `auto_authenticate: true`.
 
 ### Accessing tokens from another extension
 

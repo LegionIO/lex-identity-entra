@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.6.1] - 2026-10-19
+### Fixed
+- **Browser tab storm**: `Delegated::Actor::TokenRefresher` opened a new login tab on every 15-minute tick once the refresh token went bad (about 50 tabs overnight). It now respects `browser_auth.auto_authenticate`, and every interactive attempt goes through the new `Helpers::InteractiveAuthGuard`, which provides:
+  - single-flight per process (Mutex) and across processes (`flock` lock file)
+  - exponential backoff after an unanswered automatic attempt (30 min, doubling up to 6 h), then a pause after `max_auto_attempts` (3) until the user signs in manually. State persists across restarts.
+  - skipping automatic attempts while the macOS screen is locked or the user is idle (`ioreg`)
+  - a single warning telling the user to run `legionio auth teams`
+- **Refresh loop**: `TokenManager.refresh_token` now negative-caches failures per refresh token. Permanent OAuth errors (`invalid_grant`, `interaction_required`, ...) are not retried until a new token is saved, and transient errors back off from 30 s to 15 min. Previously the broker's `LeaseRenewer` called `provide_token` about once a second and every call re-POSTed the dead refresh token and logged a warning.
+- `AuthValidator` no longer opens a browser for an expired token when `auto_authenticate` is false. It logs the re-auth hint instead.
+- `browser_auth.callback_timeout` is now honored. It was hard-coded to 120 s. The hook listener is removed on timeout.
+
+### Changed
+- The OAuth callback page (local callback server and API hook route) now reads "LegionIO — Microsoft Teams / Entra sign-in complete. You can close this tab." There is a matching failure page that shows the provider error and the `legionio auth teams` hint. Provider errors such as `access_denied` now surface immediately instead of waiting for the timeout. The local server returns 404 for unrelated requests like `/favicon.ico` instead of consuming the callback.
+
 ## [0.6.0] - 2026-09-25
 ### Changed
 - **Breaking**: Vault token persistence is now opt-in in both directions. New per-pattern settings `identity.entra.<pattern>.token.vault_read_enabled` and `vault_write_enabled`, both defaulting to `false`. With the defaults, Entra tokens are never read from or written to Vault. Set the flags explicitly to restore 0.5.x Vault behavior (each direction is independent).
