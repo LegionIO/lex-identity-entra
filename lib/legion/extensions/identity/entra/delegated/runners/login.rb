@@ -2,6 +2,7 @@
 
 require 'faraday'
 require 'legion/extensions/identity/entra/helpers/scopes'
+require 'legion/extensions/identity/entra/helpers/callback_page'
 
 module Legion
   module Extensions
@@ -108,24 +109,25 @@ module Legion
                 { error: 'request_failed', description: e.message }
               end
 
-              def auth_callback(code: nil, state: nil, **)
+              def auth_callback(code: nil, state: nil, error: nil, error_description: nil, **)
+                if error
+                  log.warn("Login.auth_callback: provider returned error=#{error}")
+                  emit_oauth_callback(state: state, error: error, error_description: error_description)
+                  return { result:   { error: error },
+                           response: callback_response(400, callback_failure_html(error, error_description)) }
+                end
+
                 unless code && state
                   log.warn('Login.auth_callback: missing code or state parameter')
-                  return {
-                    result:   { error: 'missing_params' },
-                    response: { status: 400, content_type: 'text/html',
-                                body: '<html><body><h2>Missing code or state parameter</h2></body></html>' }
-                  }
+                  return { result:   { error: 'missing_params' },
+                           response: callback_response(400, callback_failure_html('missing_params',
+                                                                                  'The sign-in response was missing the code or state parameter.')) }
                 end
 
                 log.info('Login.auth_callback: OAuth callback received')
-                Legion::Events.emit('identity.entra.oauth.callback', code: code, state: state) if defined?(Legion::Events)
-
-                {
-                  result:   { authenticated: true, code: code, state: state },
-                  response: { status: 200, content_type: 'text/html',
-                              body: callback_success_html }
-                }
+                emit_oauth_callback(code: code, state: state)
+                { result:   { authenticated: true, code: code, state: state },
+                  response: callback_response(200, callback_success_html) }
               end
               alias handle auth_callback
 
@@ -156,21 +158,22 @@ module Legion
                 body
               end
 
+              def emit_oauth_callback(**payload)
+                return unless defined?(Legion::Events)
+
+                Legion::Events.emit('identity.entra.oauth.callback', **payload.compact)
+              end
+
+              def callback_response(status, body)
+                { status: status, content_type: 'text/html; charset=utf-8', body: body }
+              end
+
+              def callback_failure_html(error, description)
+                Legion::Extensions::Identity::Entra::Helpers::CallbackPage.failure_html(error, description)
+              end
+
               def callback_success_html
-                <<~HTML
-                  <html><body style="font-family:sans-serif;text-align:center;padding:40px;">
-                  <h2>Authentication complete</h2>
-                  <p>Closing in <span id="t">10</span> seconds&hellip;</p>
-                  <script>
-                    var s = 10;
-                    var i = setInterval(function() {
-                      s--;
-                      document.getElementById('t').textContent = s;
-                      if (s <= 0) { clearInterval(i); window.close(); }
-                    }, 1000);
-                  </script>
-                  </body></html>
-                HTML
+                Legion::Extensions::Identity::Entra::Helpers::CallbackPage.success_html
               end
 
               include Legion::Extensions::Helpers::Lex if Legion::Extensions.const_defined?(:Helpers, false) &&

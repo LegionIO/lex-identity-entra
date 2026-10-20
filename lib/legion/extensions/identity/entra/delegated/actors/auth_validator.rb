@@ -38,11 +38,15 @@ module Legion
                   raw_data = stored_token_data
                   log.warn('Entra delegated token expired but refresh_token available — refresh may be stuck') if raw_data && raw_data[:refresh_token]
                   if Legion::Extensions::Identity::Entra::Helpers::TokenManager.scope_fingerprint_stale?(:delegated)
-                    log.info('Entra delegated scope fingerprint changed, re-authenticating to acquire updated scopes')
+                    log.info('Entra delegated scope fingerprint changed, re-authentication needed to acquire updated scopes')
                   else
-                    log.info('Entra delegated token file found but expired, attempting re-auth')
+                    log.info('Entra delegated token found but expired, re-authentication needed')
                   end
-                  attempt_browser_reauth
+                  if auto_authenticate?
+                    attempt_browser_reauth
+                  else
+                    Legion::Extensions::Identity::Entra::Helpers::InteractiveAuthGuard.notify_reauth_required('token_expired')
+                  end
                 elsif auto_authenticate?
                   log.info('auto_authenticate enabled, opening browser for initial auth')
                   attempt_browser_reauth
@@ -67,12 +71,14 @@ module Legion
                 browser = Legion::Extensions::Identity::Entra::Helpers::BrowserAuth.new(
                   tenant_id: auth_settings[:tenant_id],
                   client_id: auth_settings[:client_id],
-                  scopes:    scopes
+                  scopes:    scopes,
+                  automatic: true
                 )
 
                 result = browser.authenticate
                 if result[:error]
-                  log.error("Browser auth error: #{result[:error]} - #{result[:description]}")
+                  log.debug("[entra][auth_validator] action=reauth_incomplete error=#{result[:error]} reason=#{result[:reason]}")
+                  log.error("Browser auth error: #{result[:error]} - #{result[:description]}") unless result[:error] == 'auth_skipped'
                   return false
                 end
 

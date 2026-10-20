@@ -3,6 +3,7 @@
 require 'concurrent'
 require 'digest'
 require 'time'
+require 'legion/extensions/identity/entra/helpers/interactive_auth_guard'
 
 module Legion
   module Extensions
@@ -17,9 +18,22 @@ module Legion
 
             REFRESH_BUFFER = 60
             MEMORY_STORE = Concurrent::Hash.new
+            # Negative cache for failed refresh attempts, keyed by qualifier. Without it
+            # every caller (LeaseRenewer polls once a second once the lease expires)
+            # re-POSTs a dead refresh_token to Microsoft and logs a warning each time.
+            REFRESH_FAILURES = Concurrent::Hash.new
+            REFRESH_BACKOFF_BASE = 30
+            REFRESH_BACKOFF_MAX = 900
+            # OAuth errors meaning the refresh_token will never work again; stop
+            # retrying until a new token is saved (user signs in again).
+            PERMANENT_REFRESH_ERRORS = %w[invalid_grant interaction_required invalid_client unauthorized_client].freeze
 
             def memory_store
               MEMORY_STORE
+            end
+
+            def refresh_failures
+              REFRESH_FAILURES
             end
 
             def load_token(qualifier = :delegated)
@@ -53,6 +67,8 @@ module Legion
             def save_token(qualifier, access_token:, refresh_token: nil, expires_at: nil,
                            expires_in: nil, scopes: nil, tenant_id: nil, client_id: nil)
               log.debug("TokenManager.save_token: qualifier=#{qualifier} expires_in=#{expires_in}")
+              clear_refresh_failure(qualifier)
+              Helpers::InteractiveAuthGuard.reset!(reason: 'token_saved') if qualifier.to_sym == :delegated && access_token
               expires_at ||= Time.now + expires_in.to_i if expires_in
               fingerprint = current_scope_fingerprint(qualifier)
               save_to_vault(qualifier, access_token: access_token, refresh_token: refresh_token,
@@ -162,19 +178,17 @@ module Legion
                 return nil
               end
 
-              runner = Object.new.extend(Legion::Extensions::Identity::Entra::Delegated::Runners::Login)
-              result = runner.refresh_delegated_token(
+              return nil if refresh_suppressed?(qualifier, refresh)
+
+              result = login_runner.refresh_delegated_token(
                 tenant_id:     auth[:tenant_id],
                 client_id:     auth[:client_id],
                 refresh_token: refresh,
                 scope:         auth[:scopes] || Legion::Extensions::Identity::Entra::Helpers::Scopes.resolve(pattern: :delegated)
               )
-              body = result[:result]
+              body = result[:result] || {}
               access_token = fetch_key(body, :access_token)
-              unless access_token
-                log.warn("TokenManager.refresh_token: refresh failed for #{qualifier}, no access_token in response")
-                return nil
-              end
+              return record_refresh_response_failure(qualifier, refresh, result, body) unless access_token
 
               log.info("TokenManager.refresh_token: successfully refreshed token for #{qualifier}")
               save_token(qualifier,
@@ -188,7 +202,67 @@ module Legion
             rescue StandardError => e
               handle_exception(e, level: :error, operation: 'token_manager.refresh_token',
                                   qualifier: qualifier)
+              record_refresh_failure(qualifier, refresh, e.class.name, e.message) if refresh
               nil
+            end
+
+            def login_runner
+              Object.new.extend(Legion::Extensions::Identity::Entra::Delegated::Runners::Login)
+            end
+
+            def record_refresh_response_failure(qualifier, refresh, result, body)
+              error = fetch_key(body, :error) || result[:error] || 'no_access_token'
+              record_refresh_failure(qualifier, refresh, error, fetch_key(body, :error_description) || result[:description])
+              nil
+            end
+
+            def refresh_suppressed?(qualifier, refresh)
+              entry = refresh_failures[qualifier.to_sym]
+              return false unless entry
+              return false unless entry[:fingerprint] == refresh_fingerprint(refresh)
+
+              if entry[:permanent]
+                log.debug("[entra][token_manager] action=refresh_skipped qualifier=#{qualifier} reason=permanent error=#{entry[:error]}")
+                return true
+              end
+
+              remaining = entry[:retry_at] - Time.now
+              return false unless remaining.positive?
+
+              log.debug("[entra][token_manager] action=refresh_skipped qualifier=#{qualifier} reason=backoff " \
+                        "retry_in=#{remaining.round}s failures=#{entry[:failures]}")
+              true
+            end
+
+            def record_refresh_failure(qualifier, refresh, error, description = nil)
+              key = qualifier.to_sym
+              fingerprint = refresh_fingerprint(refresh)
+              previous = refresh_failures[key]
+              previous = nil unless previous && previous[:fingerprint] == fingerprint
+              failures = (previous&.dig(:failures) || 0) + 1
+              permanent = PERMANENT_REFRESH_ERRORS.include?(error.to_s)
+              delay = [REFRESH_BACKOFF_BASE * (2**(failures - 1)), REFRESH_BACKOFF_MAX].min
+              refresh_failures[key] = { fingerprint: fingerprint, failures: failures, error: error.to_s,
+                                        permanent: permanent, retry_at: Time.now + delay }
+
+              if permanent && !previous&.dig(:permanent)
+                log.warn("TokenManager.refresh_token: refresh token for #{qualifier} was rejected (#{error}: #{description}). " \
+                         'Not retrying until you sign in again.')
+                Helpers::InteractiveAuthGuard.notify_reauth_required('refresh_token_rejected') if key == :delegated
+              elsif failures == 1
+                log.warn("TokenManager.refresh_token: refresh failed for #{qualifier} (#{error}), backing off #{delay}s")
+              else
+                log.debug("[entra][token_manager] action=refresh_failed qualifier=#{qualifier} error=#{error} " \
+                          "failures=#{failures} retry_in=#{delay}s permanent=#{permanent}")
+              end
+            end
+
+            def clear_refresh_failure(qualifier)
+              refresh_failures.delete(qualifier.to_sym)
+            end
+
+            def refresh_fingerprint(refresh)
+              Digest::SHA256.hexdigest(refresh.to_s)[0, 16]
             end
 
             def from_broker(qualifier)

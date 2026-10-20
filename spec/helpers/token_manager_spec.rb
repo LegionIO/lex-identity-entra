@@ -457,3 +457,80 @@ RSpec.describe Legion::Extensions::Identity::Entra::Helpers::TokenManager do
     end
   end
 end
+
+RSpec.describe Legion::Extensions::Identity::Entra::Helpers::TokenManager, '.refresh_token negative cache' do
+  subject(:manager) { described_class }
+
+  let(:login_class) { Legion::Extensions::Identity::Entra::Delegated::Runners::Login }
+  let(:log_io) { StringIO.new }
+  let(:data) do
+    { access_token: 'expired', refresh_token: 'dead-refresh', expires_at: Time.now - 60,
+      tenant_id: 'tenant-1', client_id: 'client-1', scopes: 'User.Read offline_access',
+      scope_fingerprint: 'test-fingerprint' }
+  end
+
+  before do
+    allow(Legion::Crypt).to receive(:vault_connected?).and_return(false)
+    allow(manager).to receive_messages(current_scope_fingerprint: 'test-fingerprint', log: Logger.new(log_io))
+    allow(Legion::Extensions::Identity::Entra::Helpers::InteractiveAuthGuard).to receive(:log).and_return(Logger.new(log_io))
+    manager.memory_store.clear
+  end
+
+  def stub_refresh_response(body)
+    calls = 0
+    runner = Object.new.extend(login_class)
+    runner.define_singleton_method(:oauth_post) do |*|
+      calls += 1
+      body
+    end
+    allow(manager).to receive(:login_runner).and_return(runner)
+    -> { calls }
+  end
+
+  it 'does not re-POST a refresh token Microsoft rejected with invalid_grant' do
+    calls = stub_refresh_response(error: 'invalid_grant', error_description: 'AADSTS70043: token expired')
+
+    5.times { expect(manager.refresh_token(:delegated, data)).to be_nil }
+
+    expect(calls.call).to eq(1)
+    expect(log_io.string.scan('was rejected (invalid_grant').size).to eq(1)
+    expect(log_io.string).to include('legionio auth teams')
+  end
+
+  it 'backs off transient failures instead of retrying on every call' do
+    calls = stub_refresh_response(error: 'temporarily_unavailable')
+
+    3.times { manager.refresh_token(:delegated, data) }
+    expect(calls.call).to eq(1)
+    expect(manager.refresh_failures[:delegated]).to include(failures: 1, permanent: false)
+
+    allow(Time).to receive(:now).and_return(Time.now + 31)
+    manager.refresh_token(:delegated, data)
+    expect(calls.call).to eq(2)
+    expect(manager.refresh_failures[:delegated][:failures]).to eq(2)
+  end
+
+  it 'retries immediately when a different refresh token is presented' do
+    calls = stub_refresh_response(error: 'invalid_grant')
+    manager.refresh_token(:delegated, data)
+    manager.refresh_token(:delegated, data.merge(refresh_token: 'new-refresh'))
+    expect(calls.call).to eq(2)
+  end
+
+  it 'clears the negative cache when a new token is saved' do
+    stub_refresh_response(error: 'invalid_grant')
+    manager.refresh_token(:delegated, data)
+    expect(manager.refresh_failures).to have_key(:delegated)
+
+    manager.save_token(:delegated, access_token: 'fresh', refresh_token: 'fresh-refresh', expires_in: 3600)
+    expect(manager.refresh_failures).not_to have_key(:delegated)
+  end
+
+  it 'stops the once-a-second load_token loop from hammering the token endpoint' do
+    calls = stub_refresh_response(error: 'invalid_grant')
+    manager.save_to_memory(:delegated, **data.except(:expires_at), expires_at: Time.now - 60)
+
+    20.times { expect(manager.load_token(:delegated)).to be_nil }
+    expect(calls.call).to eq(1)
+  end
+end

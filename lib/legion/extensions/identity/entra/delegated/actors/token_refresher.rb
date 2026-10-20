@@ -45,15 +45,26 @@ module Legion
                 if refreshed && !Legion::Extensions::Identity::Entra::Helpers::TokenManager.expired?(refreshed)
                   Legion::Extensions::Identity::Entra::Client.reset!(pattern: :delegated)
                   log.info('Delegated token refreshed successfully')
-                else
-                  log.warn('Delegated token refresh failed, attempting browser re-auth')
+                elsif auto_authenticate?
+                  log.info('Delegated token refresh failed, attempting automatic browser re-auth')
                   attempt_browser_reauth
+                else
+                  log.debug('[entra][token_refresher] action=reauth_skipped reason=auto_authenticate_disabled')
+                  auth_guard.notify_reauth_required('token_refresh_failed')
                 end
               rescue StandardError => e
-                log.error("Delegated TokenRefresher: #{e.message}")
+                handle_exception(e, level: :error, operation: 'entra.delegated.token_refresher.manual')
               end
 
               private
+
+              def auto_authenticate?
+                Legion::Settings.dig(:identity, :entra, :delegated, :browser_auth, :auto_authenticate) == true
+              end
+
+              def auth_guard
+                Legion::Extensions::Identity::Entra::Helpers::InteractiveAuthGuard
+              end
 
               def stored_raw_data
                 Legion::Extensions::Identity::Entra::Helpers::TokenManager.from_vault_data(:delegated) ||
@@ -68,12 +79,16 @@ module Legion
                 browser = Legion::Extensions::Identity::Entra::Helpers::BrowserAuth.new(
                   tenant_id: auth_settings[:tenant_id],
                   client_id: auth_settings[:client_id],
-                  scopes:    scopes
+                  scopes:    scopes,
+                  automatic: true
                 )
 
                 result = browser.authenticate
                 body = result&.dig(:result)
-                return unless body&.dig(:access_token)
+                unless body&.dig(:access_token)
+                  log.debug("[entra][token_refresher] action=reauth_incomplete error=#{result&.dig(:error)} reason=#{result&.dig(:reason)}")
+                  return
+                end
 
                 Legion::Extensions::Identity::Entra::Helpers::TokenManager.save_token(
                   :delegated,
@@ -87,7 +102,7 @@ module Legion
                 Legion::Extensions::Identity::Entra::Client.reset!(pattern: :delegated)
                 log.info('Delegated auth restored via browser re-auth')
               rescue StandardError => e
-                log.error("Delegated browser re-auth failed: #{e.message}")
+                handle_exception(e, level: :error, operation: 'entra.delegated.token_refresher.attempt_browser_reauth')
               end
             end
           end

@@ -42,9 +42,15 @@ module Legion
                 refresh_interval:    900
               },
               browser_auth: {
-                auto_authenticate:  false,
-                force_local_server: false,
-                callback_timeout:   120
+                auto_authenticate:       false,
+                force_local_server:      false,
+                callback_timeout:        120,
+                # Automatic (actor-initiated) sign-in guard; see Helpers::InteractiveAuthGuard
+                backoff_base_seconds:    1800,
+                backoff_max_seconds:     21_600,
+                max_auto_attempts:       3,
+                skip_when_screen_locked: true,
+                skip_when_idle_seconds:  900
               }
             }
           end
