@@ -133,10 +133,23 @@ identity:
   canonical_name:    "jdoe",       # normalized from onPremisesSamAccountName or mailNickname
   kind:              :human,
   source:            :entra_delegated,
-  provider_identity: "object-id-guid",
-  profile:           { ... }           # full Graph /me response
+  provider_identity: "tenant-id-guid:object-id-guid",
+  tenant_id:         "tenant-id-guid",
+  object_id:         "object-id-guid",
+  profile:           { ... }           # normalized Graph /me profile and verified subject context
 }
 ```
+
+The tenant/object key is derived only after Graph accepts the exact bearer token and
+the token's `oid` matches `/me.id`. Opaque tokens still allow profile retrieval but
+cannot establish a shared authenticated identity without verifiable tenant context.
+Canonical names and display names are not account-linking evidence. LegionIO 1.9.53+
+reuses a discovered Teams principal through this immutable key without granting
+access to the discovering reader's stored Teams content.
+
+Existing object-ID-only identity rows are not automatically adopted: their tenant
+must be established explicitly before linking them to the new scoped key. No tokens
+or source profiles are copied into the shared identity registry by Teams discovery.
 
 ## Development
 

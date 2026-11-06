@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.7.0] - 2026-10-31
+### Security
+- Qualify delegated identity keys by verified Graph token tenant and object ID (`tenant:oid`), including multi-account discovery. A successful `/me` response must match the accepted token's object ID; opaque or mismatched token subjects cannot resolve an authenticated shared identity.
+- Preserve human canonical names without treating them as cross-tenant account-linking evidence. Existing unscoped object-ID links require explicit tenant verification before migration; they are not automatically merged by name.
+
 ## [0.6.1] - 2026-10-19
 ### Fixed
 - **Browser tab storm**: `Delegated::Actor::TokenRefresher` opened a new login tab on every 15-minute tick once the refresh token went bad (about 50 tabs overnight). It now respects `browser_auth.auto_authenticate`, and every interactive attempt goes through the new `Helpers::InteractiveAuthGuard`, which provides:
