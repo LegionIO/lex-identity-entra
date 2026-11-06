@@ -43,7 +43,7 @@ module Legion
                 next unless token
 
                 profile = Legion::Extensions::Identity::Entra::Helpers::GraphClient.fetch_me(token)
-                next unless profile
+                next unless profile && profile[:provider_identity_key]
 
                 canonical = profile[:on_premises_sam_account_name] || profile[:mail_nickname]
                 next if canonical.nil? || canonical.empty?
@@ -54,7 +54,9 @@ module Legion
                   source:            :entra,
                   qualifier:         qualifier,
                   account_type:      account_type_for(qualifier, canonical),
-                  provider_identity: profile[:id],
+                  provider_identity: profile[:provider_identity_key],
+                  tenant_id:         profile[:tenant_id],
+                  object_id:         profile[:object_id],
                   profile:           profile,
                   employee_id:       profile[:employee_id]
                 }

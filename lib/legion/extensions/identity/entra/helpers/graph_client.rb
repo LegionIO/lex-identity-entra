@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require 'faraday'
+require 'base64'
 
 module Legion
   module Extensions
@@ -26,7 +27,8 @@ module Legion
               end
 
               log.debug('GraphClient.fetch_me: profile fetched successfully')
-              parse_profile(json_load(response.body))
+              profile = parse_profile(json_load(response.body))
+              profile.merge(authenticated_subject(access_token: access_token, object_id: profile[:id]))
             rescue StandardError => e
               handle_exception(e, level: :warn, operation: 'graph_client.fetch_me')
               nil
@@ -54,6 +56,29 @@ module Legion
                 f.options.open_timeout = 5
                 f.options.timeout = 10
               end
+            end
+
+            private
+
+            # Graph has accepted this exact bearer token. Only then may its tenant/object
+            # claims qualify the /me subject; configured tenants and names are not evidence.
+            def authenticated_subject(access_token:, object_id:)
+              parts = access_token.to_s.split('.')
+              return {} unless parts.length == 3
+
+              claims = json_load(Base64.urlsafe_decode64(parts[1]))
+              tenant = claims[:tid].to_s.downcase
+              oid = claims[:oid].to_s.downcase
+              guid = /\A[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\z/
+              unless guid.match?(tenant) && guid.match?(oid) && oid == object_id.to_s.downcase
+                log.warn('Graph /me subject does not have matching tenant/object token claims')
+                return {}
+              end
+
+              { tenant_id: tenant, object_id: oid, provider_identity_key: "#{tenant}:#{oid}" }
+            rescue StandardError => e
+              log.warn("Graph /me subject context unavailable: #{e.class}")
+              {}
             end
           end
         end

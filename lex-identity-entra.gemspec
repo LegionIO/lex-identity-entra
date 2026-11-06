@@ -28,6 +28,7 @@ Gem::Specification.new do |spec|
   spec.require_paths = ['lib']
 
   # Core framework dependencies
+  spec.add_dependency 'base64',          '>= 0.2'
   spec.add_dependency 'concurrent-ruby', '>= 1.2'
   spec.add_dependency 'faraday',         '>= 2.0'
   spec.add_dependency 'legion-crypt',    '>= 1.5.13'

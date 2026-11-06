@@ -31,6 +31,11 @@ module Legion
                 return nil
               end
 
+              unless profile[:provider_identity_key]
+                log.warn('Delegated::Identity.resolve: no verified tenant/object subject in profile')
+                return nil
+              end
+
               canonical = profile[:on_premises_sam_account_name] || profile[:mail_nickname]
               if canonical.nil? || canonical.empty?
                 log.warn('Delegated::Identity.resolve: no canonical name in profile')
@@ -42,7 +47,9 @@ module Legion
                 canonical_name:    normalize(canonical),
                 kind:              :human,
                 source:            :entra_delegated,
-                provider_identity: profile[:id],
+                provider_identity: profile[:provider_identity_key],
+                tenant_id:         profile[:tenant_id],
+                object_id:         profile[:object_id],
                 profile:           profile,
                 employee_id:       profile[:employee_id]
               }

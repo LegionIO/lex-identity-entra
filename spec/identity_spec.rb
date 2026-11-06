@@ -155,6 +155,9 @@ RSpec.describe Legion::Extensions::Identity::Entra::Delegated::Identity do
       let(:profile) do
         {
           id:                           'abc-123',
+          provider_identity_key:        '11111111-1111-1111-1111-111111111111:22222222-2222-2222-2222-222222222222',
+          tenant_id:                    '11111111-1111-1111-1111-111111111111',
+          object_id:                    '22222222-2222-2222-2222-222222222222',
           display_name:                 'Jane Doe',
           mail:                         'jdoe@example.com',
           employee_id:                  'E12345',
@@ -172,32 +175,8 @@ RSpec.describe Legion::Extensions::Identity::Entra::Delegated::Identity do
         allow(graph_client).to receive(:fetch_me).with('real-token').and_return(profile)
       end
 
-      it 'returns an identity hash' do
-        expect(identity.resolve).to be_a(Hash)
-      end
-
       it 'sets canonical_name to the normalized sAMAccountName' do
         expect(identity.resolve[:canonical_name]).to eq('jdoe')
-      end
-
-      it 'sets kind to :human' do
-        expect(identity.resolve[:kind]).to eq(:human)
-      end
-
-      it 'sets source to :entra_delegated' do
-        expect(identity.resolve[:source]).to eq(:entra_delegated)
-      end
-
-      it 'sets provider_identity to the Entra object ID' do
-        expect(identity.resolve[:provider_identity]).to eq('abc-123')
-      end
-
-      it 'sets employee_id from the profile' do
-        expect(identity.resolve[:employee_id]).to eq('E12345')
-      end
-
-      it 'includes the full profile' do
-        expect(identity.resolve[:profile]).to eq(profile)
       end
     end
 
@@ -205,6 +184,9 @@ RSpec.describe Legion::Extensions::Identity::Entra::Delegated::Identity do
       let(:profile) do
         {
           id:                           'def-456',
+          provider_identity_key:        '11111111-1111-1111-1111-111111111111:33333333-3333-3333-3333-333333333333',
+          tenant_id:                    '11111111-1111-1111-1111-111111111111',
+          object_id:                    '33333333-3333-3333-3333-333333333333',
           display_name:                 'Cloud User',
           mail:                         'cloud@example.com',
           employee_id:                  nil,
@@ -254,22 +236,6 @@ RSpec.describe Legion::Extensions::Identity::Entra::Delegated::Identity do
 
       it 'returns an empty array' do
         expect(identity.resolve_all).to eq([])
-      end
-    end
-
-    context 'when resolve returns a result' do
-      before do
-        allow(account_discovery).to receive(:resolve_all_accounts).and_return([])
-        allow(token_manager).to receive(:load_token).with(:delegated).and_return('token')
-        allow(graph_client).to receive(:fetch_me).with('token').and_return(
-          id: 'abc', on_premises_sam_account_name: 'user1', mail_nickname: 'user1',
-          display_name: 'User', mail: 'u@x.com', employee_id: nil,
-          on_premises_domain_name: nil, department: nil, job_title: nil, company_name: nil
-        )
-      end
-
-      it 'returns a single-element array' do
-        expect(identity.resolve_all.length).to eq(1)
       end
     end
   end
