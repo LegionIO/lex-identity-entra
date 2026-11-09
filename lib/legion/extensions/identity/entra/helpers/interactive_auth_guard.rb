@@ -106,7 +106,7 @@ module Legion
               out, status = Open3.capture2('/usr/sbin/ioreg', '-n', 'Root', '-d1')
               status.success? && out.include?('"CGSSessionScreenIsLocked"=Yes')
             rescue StandardError => e
-              handle_exception(e, level: :debug, operation: 'entra.auth_guard.screen_locked?')
+              handle_exception(e, level: :warn, operation: 'entra.auth_guard.screen_locked?')
               false
             end
 
@@ -120,7 +120,7 @@ module Legion
               match = out.match(/"HIDIdleTime"\s*=\s*(\d+)/)
               match ? match[1].to_i / 1_000_000_000 : nil
             rescue StandardError => e
-              handle_exception(e, level: :debug, operation: 'entra.auth_guard.idle_seconds')
+              handle_exception(e, level: :warn, operation: 'entra.auth_guard.idle_seconds')
               nil
             end
 
@@ -316,7 +316,7 @@ module Legion
             def setting(key)
               Legion::Settings.dig(:identity, :entra, :delegated, :browser_auth, key)
             rescue StandardError => e
-              handle_exception(e, level: :debug, operation: 'entra.auth_guard.setting', key: key)
+              handle_exception(e, level: :warn, operation: 'entra.auth_guard.setting', key: key)
               nil
             end
 

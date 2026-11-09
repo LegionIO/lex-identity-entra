@@ -15,11 +15,13 @@ RSpec.describe Legion::Extensions::Identity::Entra::Helpers::AccountDiscovery do
       allow(token_manager).to receive(:load_token).with(:adm_jdoe).and_return('priv-token')
       allow(graph_client).to receive(:fetch_me).with('primary-token').and_return(
         id: 'id-1', display_name: 'Jane Doe', mail: 'jdoe@example.com',
+        provider_identity_key: '11111111-1111-1111-1111-111111111111:22222222-2222-2222-2222-222222222222',
         employee_id: 'E123', on_premises_sam_account_name: 'jdoe',
         mail_nickname: 'jdoe'
       )
       allow(graph_client).to receive(:fetch_me).with('priv-token').and_return(
         id: 'id-2', display_name: 'Jane Doe Admin', mail: 'adm-jdoe@example.com',
+        provider_identity_key: '11111111-1111-1111-1111-111111111111:33333333-3333-3333-3333-333333333333',
         employee_id: 'E123', on_premises_sam_account_name: 'adm-jdoe',
         mail_nickname: 'adm-jdoe'
       )
