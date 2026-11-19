@@ -182,8 +182,12 @@ RSpec.describe Legion::Extensions::Identity::Entra::Helpers::TokenManager, 'rest
       Legion::Cache::Local.setup
       manager = Legion::Extensions::Identity::Entra::Helpers::TokenManager
       if mode == 'write'
-        require 'legion/extensions/helpers/base'
-        manager.extend(Legion::Extensions::Helpers::Base)
+        require 'legion/extensions/builders/helpers'
+        builder = Object.new.extend(Legion::Extensions::Builder::Helpers)
+        builder.define_singleton_method(:helper_files) do
+          Dir[File.expand_path('lib/legion/extensions/identity/entra/helpers/*.rb')]
+        end
+        builder.build_helpers
         manager.save_to_memory(:delegated, access_token: 'process-access', refresh_token: 'process-refresh',
           expires_at: Time.now + 600, scope_fingerprint: manager.current_scope_fingerprint(:delegated), **auth)
         actor = Legion::Extensions::Identity::Entra::Delegated::Actor::TokenRefresher.new

@@ -39,9 +39,6 @@ module Legion
               REFRESH_FAILURES
             end
 
-            # Identity preload runs before Core injects lex_filename/segments.
-            def cache_namespace = 'identity_entra:'
-
             def load_token(qualifier = :delegated)
               log.debug("TokenManager.load_token: qualifier=#{qualifier}")
               data = token_data(qualifier, refresh: true)
@@ -145,7 +142,6 @@ module Legion
             # Only called when the delegated actor stops, while Local is still connected.
             # Normal token saves and refreshes deliberately do not write this handoff.
             def save_restart_token(**)
-              return false unless local_cache_connected?
               return false unless settings[:token][:restart_cache_enabled]
 
               key = restart_cache_key
@@ -163,7 +159,6 @@ module Legion
             end
 
             def restore_restart_token(**)
-              return nil unless local_cache_connected?
               return nil unless settings[:token][:restart_cache_enabled]
 
               key = restart_cache_key
