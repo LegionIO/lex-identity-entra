@@ -3,6 +3,8 @@
 require 'concurrent'
 require 'digest'
 require 'time'
+require 'legion/cache'
+require 'legion/cache/helper'
 require 'legion/extensions/identity/entra/helpers/interactive_auth_guard'
 
 module Legion
@@ -15,6 +17,7 @@ module Legion
             include Legion::Logging::Helper
             include Legion::Settings::Helper
             include Legion::JSON::Helper
+            include Legion::Cache::Helper
 
             REFRESH_BUFFER = 60
             MEMORY_STORE = Concurrent::Hash.new
@@ -36,6 +39,9 @@ module Legion
               REFRESH_FAILURES
             end
 
+            # Identity preload runs before Core injects lex_filename/segments.
+            def cache_namespace = 'identity_entra:'
+
             def load_token(qualifier = :delegated)
               log.debug("TokenManager.load_token: qualifier=#{qualifier}")
               data = token_data(qualifier, refresh: true)
@@ -47,6 +53,7 @@ module Legion
             def token_data(qualifier = :delegated, refresh: true)
               log.debug("TokenManager.token_data: qualifier=#{qualifier} refresh=#{refresh}")
               data = from_vault_data(qualifier) || from_memory(qualifier)
+              data ||= restore_restart_token if qualifier.to_sym == :delegated
               return nil unless data
 
               if scope_fingerprint_stale?(qualifier, data)
@@ -133,6 +140,78 @@ module Legion
 
               log.debug("TokenManager.from_memory: token found for #{qualifier}")
               normalize_token_data(data)
+            end
+
+            # Only called when the delegated actor stops, while Local is still connected.
+            # Normal token saves and refreshes deliberately do not write this handoff.
+            def save_restart_token(**)
+              return false unless local_cache_connected?
+              return false unless settings[:token][:restart_cache_enabled]
+
+              key = restart_cache_key
+              return false unless key
+
+              data = from_memory(:delegated)
+              return false unless data && data[:expires_at] && restart_account_matches?(data: data)
+
+              ttl = restart_token_ttl(expires_at: data[:expires_at])
+              return false unless ttl.positive?
+
+              saved = local_cache_set(key, data.merge(expires_at: data[:expires_at].utc.iso8601), ttl: ttl)
+              log.warn('Entra restart token could not be saved to Local') unless saved
+              saved
+            end
+
+            def restore_restart_token(**)
+              return nil unless local_cache_connected?
+              return nil unless settings[:token][:restart_cache_enabled]
+
+              key = restart_cache_key
+              return nil unless key
+
+              cached = local_cache_get(key)
+              return nil unless cached
+
+              deleted = local_cache_delete(key)
+              log.warn('Entra restart token could not be removed from Local; its original TTL still applies') unless deleted
+              data = normalize_restart_token(data: cached)
+              return nil unless data && data[:expires_at] && data[:expires_at] > Time.now && restart_account_matches?(data: data)
+
+              save_to_memory(:delegated, **data, refresh_token: data[:refresh_token])
+              from_memory(:delegated)
+            end
+
+            def restart_token_ttl(expires_at:, **)
+              remaining = (expires_at - Time.now).floor
+              configured = settings[:token][:restart_cache_ttl]
+              return remaining if configured.nil?
+
+              unless configured.is_a?(Numeric) && configured.finite? && configured.positive?
+                log.warn('Entra restart_cache_ttl must be nil or a positive finite number of seconds')
+                return 0
+              end
+
+              [remaining, configured.floor].min
+            end
+
+            def normalize_restart_token(data:, **)
+              normalize_token_data(data)
+            rescue ArgumentError, TypeError => e
+              handle_exception(e.exception('Invalid Entra restart token metadata'), level: :warn, operation: :restore_restart_token)
+              nil
+            end
+
+            def restart_cache_key(**)
+              auth = settings_auth
+              return nil if auth[:tenant_id].to_s.empty? || auth[:client_id].to_s.empty?
+
+              owner = json_dump([::Process.uid, auth[:tenant_id], auth[:client_id]])
+              "restart:delegated:#{Digest::SHA256.hexdigest(owner)}"
+            end
+
+            def restart_account_matches?(data:, **)
+              auth = settings_auth
+              data[:tenant_id] == auth[:tenant_id] && data[:client_id] == auth[:client_id]
             end
 
             def save_to_memory(qualifier, access_token:, refresh_token:, expires_at:,

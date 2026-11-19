@@ -25,6 +25,11 @@ module Legion
                 true
               end
 
+              def cancel
+                super
+                Legion::Extensions::Identity::Entra::Helpers::TokenManager.save_restart_token
+              end
+
               def manual
                 log.debug('Delegated TokenRefresher tick')
                 data = stored_raw_data

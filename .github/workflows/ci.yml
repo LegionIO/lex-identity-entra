@@ -9,6 +9,8 @@ on:
 jobs:
   ci:
     uses: LegionIO/.github/.github/workflows/ci.yml@main
+    with:
+      needs-redis: true
 
   excluded-files:
     uses: LegionIO/.github/.github/workflows/excluded-files.yml@main
