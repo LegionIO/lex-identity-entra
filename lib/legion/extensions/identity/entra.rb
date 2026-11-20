@@ -41,10 +41,17 @@ module Legion
         def self.mcp_tools?          = false
         def self.mcp_tools_deferred? = false
         def self.sticky_tools?       = false
+
+        def self.default_settings
+          { token: { restart_cache_enabled: true, restart_cache_ttl: nil } }
+        end
       end
     end
   end
 end
+
+# Identity resolution can run during preload, before Core calls autobuild.
+Legion::Settings.merge_settings(:extensions, { identity: { entra: Legion::Extensions::Identity::Entra.default_settings } })
 
 if defined?(Legion::Identity::Resolver)
   Legion::Identity::Resolver.register(Legion::Extensions::Identity::Entra::Delegated::Identity)

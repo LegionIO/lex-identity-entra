@@ -7,7 +7,7 @@ and workload identity authentication patterns.
 ## Features
 
 - **Delegated auth** — OAuth2 PKCE browser flow with local callback server; device-code fallback
-- **Token persistence** — in-memory by default; Vault (`kv/data/users/<identity>/entra/<qualifier>/auth`) reading and writing are separate opt-ins via `vault_read_enabled` / `vault_write_enabled`. Tokens are never written to local disk
+- **Token persistence** — in memory during normal operation; graceful shutdown temporarily hands delegated tokens to Local cache for the next daemon process. Vault (`kv/data/users/<identity>/entra/<qualifier>/auth`) reading and writing remain separate opt-ins via `vault_read_enabled` / `vault_write_enabled`
 - **Scope fingerprinting** — MD5 fingerprint of active scopes stored with token; any scope change forces re-authentication on next boot
 - **Identity integration** — `AuthValidator` upgrades `Legion::Identity::Process` via `Resolver.upgrade!` and registers with `Legion::Identity::Broker` for cross-extension token access
 - **Application credentials** — client credentials flow for service-to-service auth
@@ -121,10 +121,42 @@ identity:
 
 ## Token storage
 
+Restart handoff settings use the framework's extension settings namespace:
+
+```yaml
+extensions:
+  identity:
+    entra:
+      token:
+        restart_cache_enabled: true  # false disables shutdown handoff and restoration
+        restart_cache_ttl: null      # remaining token lifetime; positive seconds cap it
+```
+
 | Backend | Path | When used |
 |---------|------|-----------|
 | HashiCorp Vault | `kv/data/users/<identity>/entra/delegated/auth` | Only when opted in: `vault_read_enabled` / `vault_write_enabled` (both default `false`) |
-| Memory | In-process store | Default persistence; tokens are never written to local disk |
+| Memory | In-process store | Normal operation, including login and refresh |
+| Local cache | Framework-namespaced restart entry, scoped by OS user, tenant, and application | Delegated token handoff on graceful shutdown only; deleted when restored |
+
+The delegated token refresher's cancellation hook writes the current access token,
+refresh token, and metadata synchronously through `Legion::Cache::Helper`'s
+`local_cache_set`. Its TTL is the access token's remaining lifetime, rounded down
+to whole seconds. Expired tokens, missing expiration times, and subsecond remaining
+lifetimes are not cached; the handoff never uses a zero/no-expiration TTL. A
+configured `restart_cache_ttl` can shorten retention but cannot extend it beyond
+the access token's expiry. Invalid TTL settings skip the write with a warning.
+
+On the next token lookup, the daemon reads and deletes the handoff through
+`local_cache_get` / `local_cache_delete`, restores it to memory, and applies the
+existing scope and refresh checks. Restarting does not extend the original expiry.
+Vault-only tokens continue to use the opt-in Vault path.
+
+This requires an already connected Local Memcached or Redis backend that outlives
+the daemon. Lite mode's in-process shared cache is not a substitute. Crashes,
+forced termination, eviction, unavailable Local cache, and downtime beyond the TTL
+can require sign-in again. No core library changes or encryption are involved:
+the temporary cache value contains credentials. The extension does not write token
+files; any Redis disk persistence is controlled by the backend's configuration.
 
 ## Identity provider contract
 
@@ -155,8 +187,13 @@ or source profiles are copied into the shared identity registry by Teams discove
 
 ```bash
 bundle install
-bundle exec rspec
-bundle exec rubocop
+bundle exec rspec --format json --out tmp/rspec_results.json --format progress --out tmp/rspec_progress.txt
+bundle exec rubocop -A
 ```
+
+Restart tests use the real cache helpers and actor cancellation. Locally they
+start an isolated `redis-server` process with disk persistence disabled. CI uses
+its Redis service with a unique test namespace; `ENTRA_TEST_REDIS_URL` can select
+an explicit test server. Install `redis-server` for local development.
 
 **GitHub**: https://github.com/LegionIO/lex-identity-entra

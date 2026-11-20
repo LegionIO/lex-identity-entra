@@ -14,20 +14,9 @@ require 'legion/logging/helper'
 require 'legion/settings'
 require 'legion/settings/helper'
 
-# Stub Legion::Extensions::Actors and Legion::Extensions::Hooks before loading
-# extension files that inherit from them — these base classes live in the
-# LegionIO monorepo core gems which are not available in this isolated test env.
+# Keep hook discovery isolated; actor lifecycle classes below come from Core.
 module Legion
   module Extensions
-    module Actors
-      class Base
-        def run; end
-      end
-
-      class Once < Base; end
-      class Every < Base; end
-    end
-
     module Hooks
       class Base
         def self.mount(_path); end
@@ -48,6 +37,8 @@ module Legion
   end
 end
 
+require 'legion/extensions/actors/once'
+require 'legion/extensions/actors/every'
 require 'legion/extensions/identity/entra'
 require 'tmpdir'
 

@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.7.1] - 2026-11-19
+### Fixed
+- Preserve delegated Entra credentials in Local cache only during graceful shutdown, using the access token's remaining lifetime as the TTL. The next process restores and deletes the handoff before applying the existing scope and refresh checks.
+- Scope restart entries by OS user, tenant, and application. Expired credentials and credentials without a known expiration are not saved or restored. Vault persistence remains opt-in; crashes and cache misses still require the existing authentication flow.
+- Use the cache helper's native namespace and connection-failure behavior without extension overrides or connectivity prechecks.
+### Added
+- Extension settings `token.restart_cache_enabled` (default `true`) and `token.restart_cache_ttl` (default `nil`, using the remaining token lifetime). A configured TTL can shorten the handoff window but never extend it past token expiry.
+
 ## [0.7.0] - 2026-10-31
 ### Security
 - Qualify delegated identity keys by verified Graph token tenant and object ID (`tenant:oid`), including multi-account discovery. A successful `/me` response must match the accepted token's object ID; opaque or mismatched token subjects cannot resolve an authenticated shared identity.

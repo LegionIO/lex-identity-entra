@@ -31,6 +31,7 @@ Gem::Specification.new do |spec|
   spec.add_dependency 'base64',          '>= 0.2'
   spec.add_dependency 'concurrent-ruby', '>= 1.2'
   spec.add_dependency 'faraday',         '>= 2.0'
+  spec.add_dependency 'legion-cache',    '>= 1.4.3'
   spec.add_dependency 'legion-crypt',    '>= 1.5.13'
   spec.add_dependency 'legion-json',     '>= 1.2.1'
   spec.add_dependency 'legion-logging',  '>= 1.5.3'
